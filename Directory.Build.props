@@ -65,6 +65,7 @@
     제너레이터가 참조하는 Roslyn 컴파일러 API 버전.
     Unity 에디터(6000.3 = Roslyn 4.3)용 재빌드 시 -p:RoslynAnalyzerApiVersion=4.3.0 으로 오버라이드한다.
     (CS9057: 분석기가 호스트 컴파일러보다 새 Roslyn 을 참조하면 Unity 가 제너레이터를 스킵한다)
+    -unity 접미사 패키지 작성·검증·로컬 피드 배치 전체 절차: Document/03-Reference/Packages.md
   -->
   <PropertyGroup>
     <RoslynAnalyzerApiVersion>4.14.0</RoslynAnalyzerApiVersion>

@@ -8,6 +8,11 @@ updated: 2026-09-14
 
 # Changelog
 
+## 2026-09-14 — Unity 피드 DRPC.CodeGenerator 3.4.0-unity 갱신
+
+- 로컬 유니티 피드(`C:/Projects/DS/unity-nuget/`)의 DRPC.CodeGenerator를 3.3.0-unity → **3.4.0-unity**로 갱신(main 기준, `-p:RoslynAnalyzerApiVersion=4.3.0` 재빌드). AssemblyRef `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`·TFM netstandard2.0 검증 완료. 3.3.0-unity는 폴백 유지.
+- [[../03-Reference/Packages|Packages]]에 -unity 재빌드 절차·피드 위치·검증 방법 문서화(신규 섹션), Directory.Build.props 주석에 문서 포인터 추가. 코드·빌드 로직 변경 없음
+
 ## 2026-09-14 — 하네스 전환 (UniNet PI 하네스 도입)
 
 - 기존 하네스 제거 — `.cursor/`(에이전트·훅·ds-document-vault 스킬), `.pi-subagents/`(미션 기록 포함), `.pi-glla/` 삭제, 구 워크플로 기반 `AGENTS.md` 전면 교체. 결정 배경·내용: [[../05-Decisions/0004-harness-switch-to-pi|ADR 0004]]
