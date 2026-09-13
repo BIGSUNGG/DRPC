@@ -159,7 +159,7 @@ That is the full loop: `ListenAsync` on the server, `ConnectAsync` on the client
 | `DRPC.Client` / `DRPC.Server` | Side-specific hub bases, generated `ConnectAsync` / `ListenAsync` wiring |
 | `DRPC.CodeGenerator` | Roslyn source generator (development dependency, analyzer-only reference) |
 
-Current versions: DRPC packages **3.3.0** (release tags are authoritative), `MessageProtocol` **3.1.0** (the unified `[Message]` attribute — see below), `Communication.Network.RUDP.*` / `Communication.Shared` **2.7.0**.
+Current versions: DRPC packages **3.4.0** (release tags are authoritative), `MessageProtocol` **3.1.0** (the unified `[Message]` attribute — see below), `Communication.Network.RUDP.*` / `Communication.Shared` **2.7.0**.
 
 Runtime packages target `netstandard2.1` and run on Unity and other `netstandard2.1`-capable frameworks. Building this repository or the sandbox from source requires the .NET 10 SDK.
 

@@ -8,14 +8,14 @@ updated: 2026-09-14
 
 # Changelog
 
-## 2026-09-14 — DRPCGEN003 선언부 검증·엄격 규칙 (미릴리스)
+## 2026-09-14 — v3.4.0 (release)
 
-- **타입 게이트 3각 강화** — `[RemoteProcedure]` 매개변수·반환 검증(DRPCGEN003)이 허브 배선이 아닌 속성 자체에서 발동한다:
+- **패키지 3.4.0 게시(minor)** — 선언부 타입 게이트. **타입 게이트 3각 강화** — `[RemoteProcedure]` 매개변수·반환 검증(DRPCGEN003)이 허브 배선이 아닌 속성 자체에서 발동한다:
   1. **선언부 발동**: 생성기가 메서드 단위로 검증 — 계약 어셈블리 단독 빌드에서 바로, 메서드 선언 라인에 찍힌다(기존: 허브 상속 시에만, 메타데이터 경유로 위치 없는 베어 CSC 에러). 허브 측은 메타데이터 선언의 안전망으로 잔류(허브 위치 진단).
   2. **엄격 규칙**: `MessageStyleOf` 가 `IMessageSerializable<T>` 구현 폴백을 폐기 — `[Message]`/`[GenericMessage]` 표시 속성이 없으면 구현 여부와 무관하게 거부.
   3. **스켈레톤 배출**: 검증 실패 시 생성기가 전체 생성물 대신 `_Implementation`/`_Validate` 정의 선언+베이스 생성자만 배출 — 사용자 partial 이 고아가 되는 CS0759 후속 에러 벽(13건 관측) 제거. DRPCGEN003 이 유일한 에러.
-- 계약 프로젝트(Sandbox.Contracts)가 `DRPC.CodeGenerator` 를 애널라이저(`OutputItemType="Analyzer"`)로 추가 참조 — 선언부 검증은 계약 어셈블리에서 돈다. 소비자 안내는 Overview 갱신.
-- 테스트 3건 추가(선언부 허브 없음·엄격 규칙·스켈레톤 CS0759 0건) — 총 144개 통과(52/52/40). 검증: Release 빌드 0 오류, Sandbox 재현([Message] 제거 → Contracts/Server 모두 DRPCGEN003 위치 진단·CS 0건, 복원 → 전 green).
+- 계약 프로젝트(Sandbox.Contracts)가 `DRPC.CodeGenerator` 를 애널라이저(`OutputItemType="Analyzer"`)로 추가 참조 — 선언부 검증은 계약 어셈블리에서 돈다. 소비자 안내는 Overview 갱신. 공개 API·와이어 무변화(컴파일 게이트 강화 전용).
+- 테스트 3건 추가(선언부 허브 없음·엄격 규칙·스켈레톤 CS0759 0건) — 총 144개 통과(52/52/40). 검증: Release 빌드 0 오류, Sandbox 재현([Message] 제거 → Contracts/Server 모두 DRPCGEN003 위치 진단·CS 0건, 복원 → 전 green). 버전 표기 동기화: README·CONTEXT·Public-API.
 - 문서: Public-API(진단 표·테스트 수), Overview(미지원·선언부 우선 서술) 갱신.
 
 ## 2026-09-14 — v3.3.0 (release)
