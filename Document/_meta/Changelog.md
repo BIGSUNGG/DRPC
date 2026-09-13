@@ -3,12 +3,17 @@ project: DS_RPC
 type: meta
 status: stable
 tags: [meta, changelog]
-updated: 2026-09-11
+updated: 2026-09-13
 ---
 
 # Changelog
 
 문서 변경 기록(최신 위). 코드 변경은 커밋 메시지로 추적한다.
+
+## 2026-09-13
+
+- **NuGet 패키지 설명 영문 재작성** — 5패키지(`DRPC.Attribute`·`CodeGenerator`·`Shared`·`Client`·`Server`) `<Description>` 을 한국어 한 줄에서 자기완결 영문으로 보강(패밀리 소개 + 기능 목록 + TFM/Unity 2021.2+ 호환 + 참조 방법). 각 패키지가 NuGet 에서 단독 노출되는 점을 고려해 전부 단독 독해 가능하게 작성. 팩 검증(`dotnet pack` nuspec 확인) 완료.
+- `03-Reference/Packages.md` 신규: 5패키지 TFM·의존·역할 표 + Description 원천 규약(csproj 가 원천, 문서는 요약만).
 
 ## 2026-09-11 (25차)
 

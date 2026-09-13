@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>DRPC.CodeGenerator</PackageId>
-    <Description>Roslyn 소스 생성기: [RemoteProcedure] 계약으로 허브 스텁·수신 디스패치·전송 보일러플레이트를 빌드 시 생성합니다. Analyzer 로 참조합니다.</Description>
+    <Description>Roslyn source generator for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Scans hub classes for [RemoteProcedure] contracts and emits the entire RPC plumbing at build time: typed async client stubs ({Method}Async), incoming dispatch with {Method}_Implementation hooks, connection wiring (ConnectAsync / ListenAsync), and flat payload encoding — you never write transport or serialization code. Contract mistakes such as duplicate method ids, unsupported signatures, or undeclared generic arguments surface as DRPCGEN compile-time diagnostics. Reference it as an analyzer (OutputItemType="Analyzer" ReferenceOutputAssembly="false") in every project that declares or implements a hub. Targets netstandard2.0.</Description>
     <PackageTags>DRPC;Roslyn;SourceGenerator;Analyzer</PackageTags>
     <DevelopmentDependency>true</DevelopmentDependency>
     <IsPackable>true</IsPackable>

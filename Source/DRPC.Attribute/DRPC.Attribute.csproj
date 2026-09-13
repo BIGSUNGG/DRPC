@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>DRPC.Attribute</PackageId>
-    <Description>DRPC 계약 메서드에 붙이는 특성(RemoteProcedure)과 전송 방식(RpcDeliveryMode). 런타임 의존성 없음. Unity(netstandard2.1) 호환.</Description>
+    <Description>Contract declarations for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Annotates hub interface methods with [RemoteProcedure] and carries the per-method delivery options: five delivery modes (Unreliable, ReliableUnordered, Sequenced, ReliableSequenced, ReliableOrdered), fire-and-forget one-way calls, per-call timeouts, an opt-in server-side validation gate, and generic procedures with compile-time-checked type sets. Zero runtime dependencies; targets netstandard2.1 so it is safe to reference from Unity 2021.2+ and any netstandard2.1-capable project. Belongs in the contract project shared by your client and server.</Description>
     <RootNamespace>DRPC</RootNamespace>
   </PropertyGroup>
 

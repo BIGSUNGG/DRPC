@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>DRPC.Server</PackageId>
-    <Description>DRPC 서버 측 RPC 허브와 RUDP 리스너. DRPC.Shared 와 함께 실시간 서비스 백엔드에 사용합니다.</Description>
+    <Description>Server-side runtime for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Provides the server hub and RUDP listener: accept connections gated by connection keys, cap pending and incoming work per hub, authorize requests through an override hook before method lookup, and enable optional DTLS 1.2 packet encryption with server certificates. Implement your contract via the generated partial {Method}_Implementation methods and call back into connected clients over the same typed stubs. Use it with DRPC.Shared to build real-time service backends for modern .NET and Unity 2021.2+ clients. Targets netstandard2.1.</Description>
     <RootNamespace>DRPC</RootNamespace>
   </PropertyGroup>
 

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>DRPC.Client</PackageId>
-    <Description>DRPC 클라이언트 측 RPC 허브와 RUDP 접속. Unity(netstandard2.1) 사용을 고려했습니다.</Description>
+    <Description>Client-side runtime for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Provides the client hub: connect over RUDP with connection keys and handshake timeouts, optionally wrapped in DTLS 1.2 packet encryption with hostname matching and certificate-pin validation, then invoke your contract through the typed await hub.MethodAsync(...) stubs emitted by DRPC.CodeGenerator — round-trip calls with per-call timeouts and cancellation, fire-and-forget one-way sends, and two-way callbacks from the server through the same stub pattern. Targets netstandard2.1, so it works from modern .NET apps and Unity 2021.2+ clients.</Description>
     <RootNamespace>DRPC</RootNamespace>
   </PropertyGroup>
 

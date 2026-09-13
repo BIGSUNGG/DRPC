@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>DRPC.Shared</PackageId>
-    <Description>DRPC 공유 런타임: HubBase·와이어 메시지·오류 모델·수신 라우팅. 클라이언트/서버 패키지의 공통 기반입니다.</Description>
+    <Description>Shared runtime for DRPC — a distributed RPC library for .NET that runs over reliable UDP. Contains HubBase (pending-call table with per-call timeouts, cancellation tokens, and pending/incoming concurrency caps), the wire message model (one-way calls signal CallId 0), the structured error model surfaced as RpcFaultException with typed RpcErrorCode values, and incoming routing. Transport (RUDP with optional DTLS 1.2 encryption and certificate pinning) comes from DS_Communication; serialization from DS_MessageProtocol. Common foundation of the DRPC.Client and DRPC.Server packages — reference it alongside DRPC.Attribute in the contract project shared by both sides. Targets netstandard2.1 for modern .NET and Unity 2021.2+.</Description>
     <RootNamespace>DRPC</RootNamespace>
   </PropertyGroup>
 
