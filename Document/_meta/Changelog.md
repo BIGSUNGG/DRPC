@@ -8,6 +8,12 @@ updated: 2026-09-14
 
 # Changelog
 
+## 2026-09-14 — 하네스 전환 (UniNet PI 하네스 도입)
+
+- 기존 하네스 제거 — `.cursor/`(에이전트·훅·ds-document-vault 스킬), `.pi-subagents/`(미션 기록 포함), `.pi-glla/` 삭제, 구 워크플로 기반 `AGENTS.md` 전면 교체. 결정 배경·내용: [[../05-Decisions/0004-harness-switch-to-pi|ADR 0004]]
+- UniNet과 동일한 PI 하네스 구축 — `.pi/`(reviewer 에이전트, doc-guard 훅, doc-sync·review-until-clean·review-structure·review-security·review-performance 스킬)
+- 하네스 구성표 [[../00-AI/HARNESS|HARNESS]] 신설, doc-sync 스킬·AGENTS.md는 기존 Vault 구조(00-AI·_meta·05-Decisions)를 읽고 쓰도록 적응. 코드·테스트·기존 문서 구조 불변
+
 ## 2026-09-14 — v3.4.0 (release)
 
 - **패키지 3.4.0 게시(minor)** — 선언부 타입 게이트. **타입 게이트 3각 강화** — `[RemoteProcedure]` 매개변수·반환 검증(DRPCGEN003)이 허브 배선이 아닌 속성 자체에서 발동한다:
