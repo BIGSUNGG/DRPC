@@ -8,6 +8,10 @@ updated: 2026-09-13
 
 # Changelog
 
+## 2026-09-13 — v3.2.0 (release)
+
+- **패키지 3.2.0 게시(minor)** — 하드닝 일괄 반영(2차·3차 항목). 가산 API: `HubBase.IsDisconnected`, protected `ProcessRequestAsync`. 공개 API 파손 없음.
+
 문서 변경 기록(최신 위). 코드 변경은 커밋 메시지로 추적한다.
 
 ## 2026-09-13 (3차)
