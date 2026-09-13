@@ -18,21 +18,16 @@ NuGet 게시 5패키지. **패키지 설명(Description)의 원천은 각 csproj
 | `DRPC.Client` | netstandard2.1 | Shared + RUDP.Client(NuGet) | 클라이언트 허브·RUDP 접속(DTLS 1.2 옵션) |
 | `DRPC.Server` | netstandard2.1 | Shared + RUDP.Server(NuGet) | 서버 허브·RUDP 리스너(연결 키·인증 훅·DTLS 1.2 옵션) |
 
-## Unity 재빌드 — 로컬 피드
+## Unity 소비 — 메인라인 통합 (3.5.0부터)
 
-Unity 6.0 LTS 번들 Roslyn = **Microsoft.CodeAnalysis 4.3.0.0**(에디터 `Data/DotNetSdkRoslyn` 실측). 기본 빌드가 참조하는 4.14 DLL은 CS9057로 제너레이터가 스킵되므로, Unity 소비용은 아래 오버라이드로 재빌드한다:
+Unity 6.0 LTS 번들 Roslyn = **Microsoft.CodeAnalysis 4.3.0.0**(에디터 `Data/DotNetSdkRoslyn` 실측). **v3.5.0부터 메인라인 생성기가 Roslyn 4.3을 직접 참조한다**(`Directory.Build.props` 기본값 4.3.0, 2026-09-14 사용자 결정) — CS9057 스킵 없이 Unity 에디터에서 바로 구동되므로, Unity 프로젝트는 nuget.org의 `DRPC.CodeGenerator`를 표준 버전으로 그대로 설치하면 된다. `.NET` 소비자 호환 범위는 Roslyn 4.3 호스트 이상(VS2022 17.3+/.NET SDK 6.0.4xx+, 2022 중반 이후)으로 유지된다(참조보다 낡은 호스트에서만 CS9057 발생).
 
-```powershell
-dotnet pack Source/DRPC.CodeGenerator -c Release `
-  -p:RoslynAnalyzerApiVersion=4.3.0 -p:Version=3.5.0 -o artifacts/nupkg-unity
-```
-
-- 배치: `C:/Projects/DS/unity-nuget/`(로컬 폴더 피드 — MessageProtocol.CodeGenerator 3.1.0-unity와 공용). 이전 패키지(3.3.0/3.4.0-unity)는 폴백으로 유지.
-- 검증: nupkg 내 `analyzers/dotnet/cs/DRPC.CodeGenerator.dll`의 AssemblyRef가 `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`이고 TFM netstandard2.0(System.Reflection.Metadata 기반 확인). 스크립트: `artifacts/nupkg-unity/verify-nupkg.ps1`(gitignore).
-- **버전 정책 (2026-09-14 사용자 결정)**: 3.5.0부터 접미사 없는 자체 버전 라인(3.4.0 → 3.5.0). 접미사 없는 버전은 로컬 피드가 nuget.org보다 높아 우선 해석된다. **주의**: nuget.org 게시 버전과 같은 숫자를 쓰면 서로 다른 빌드가 충돌하므로, 게시 시 유니티 피드를 먼저 갱신하거나 버전을 건너뛴다. 구 `-unity` 접미사(≤3.4.0)는 역사적 경로로만 참고.
+- **로컬 피드** `C:/Projects/DS/unity-nuget/`는 오프라인·폴백 용도로 유지. 갱신은 게시된 것과 동일한 빌드로: `dotnet pack Source/DRPC.CodeGenerator -c Release -o artifacts/nupkg-unity -p:Version=<릴리스버전>` 후 복사. 구 `-unity` 접미사 라인(≤3.4.0)과 3.5.0 재빌드판은 이중 라인 시대의 유산 — nuget.org 3.5.0과 동일 비트이므로 놔둬도 무해.
+- **검증**: nupkg 내 `analyzers/dotnet/cs/DRPC.CodeGenerator.dll`의 AssemblyRef가 `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`이고 TFM netstandard2.0(System.Reflection.Metadata 기반 확인). 스크립트: `artifacts/nupkg-unity/verify-nupkg.ps1`(gitignore).
+- 새 Roslyn API 가 필요해 기본을 올릴 때는 Unity 호환 대가를 인지하고 결정한다(올리면 Unity 는 그 버전을 스킵한다 — CS9057).
 
 ## NuGet Description 규약 (2026-09-13)
 
 - 5패키지 Description을 **영어로 재작성** — 각 패키지가 NuGet에서 단독 노출되므로 전부 자기완결(패밀리 소개 1문장 + 기능 + TFM/Unity 호환).
 - 원천: `Source/*/[PackageId].csproj`의 `<Description>`. 수정 시 이 문서가 아닌 csproj 를 고친다.
-- 이형제: 형제 저장소 [[../../../../DS_Communication/Document/03-Reference/Packages.md|DS_Communication Packages]] — 단, 저장소 간 링크 불가이므로 경로만 기록.
+- 이형제: 형제 저장소 문서 `DS_Communication/Document/03-Reference/Packages.md`(상대 경로 `../../../../DS_Communication/Document/03-Reference/Packages.md`) — 저장소 간 위키링크 불가이므로 경로만 기록.

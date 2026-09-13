@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <!-- 드라이버 Roslyn 은 4.14 고정(기본 4.3 아님) — 4.3 참조로 빌드된 생성기를 상위 호스트에서 구동하는 nuget.org 소비 시나리오를 그대로 검증하기 위함. 낮추지 말 것. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">

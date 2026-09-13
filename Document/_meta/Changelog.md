@@ -8,6 +8,12 @@ updated: 2026-09-14
 
 # Changelog
 
+## 2026-09-14 — v3.5.0 (release)
+
+- **유니티 메인라인 통합(사용자 결정)** — 생성기의 Roslyn 참조 기본을 4.14.0 → **4.3.0**으로 전환(`Directory.Build.props`). Unity 6(번들 Roslyn 4.3.0.0)에서 CS9057 스킵 없이 nuget.org 패키지 직접 소비가 가능해지며, 기존 `-unity` 이중 라인(재빌드·피드 드리프트)이 폐지된다. .NET 소비자 호환은 Roslyn 4.3+ 호스트(VS2022 17.3+, 2022 중반 이후)로 사실상 전 범위 유지.
+- 버전 3.4.0 → 3.5.0 범프(전 5패키지, 기능 변화 없음 — 생성기 어셈블리의 AssemblyRef만 `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`로 변경). 로컬 게이트 통과: 솔루션 전체 빌드 + 144 테스트(52/52/40) — 테스트 드라이버는 4.14 유지로 "4.3 빌드 생성기를 상위 호스트에서 구동" = nuget.org 소비 시나리오 검증. 태그 v3.5.0 → NuGet Publish 워크플로 5패키지 게시.
+- 문서: [[../03-Reference/Packages|Packages]] Unity 섹션 재작성(메인라인 통합·피드 폴백 용도), [[../03-Reference/Production-Readiness-Review|Production-Readiness-Review]] Unity 대응 라인 갱신, README Unity/버전 갱신, [[../00-AI/CONTEXT|CONTEXT]] 릴리스 사슬 갱신
+
 ## 2026-09-14 — Unity 피드 DRPC.CodeGenerator 3.5.0 배포 (접미사 폐지)
 
 - 유니티 피드(`C:/Projects/DS/unity-nuget/`)에 **DRPC.CodeGenerator 3.5.0**(Roslyn 4.3 재빌드, 소스는 3.4.0과 동일) 배포. 사용자 결정으로 `-unity` 접미사를 폐지하고 접미사 없는 자체 버전 라인으로 전환 — AssemblyRef `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`·TFM netstandard2.0 검증 완료, 3.3.0/3.4.0-unity는 폴백 유지.

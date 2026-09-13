@@ -42,7 +42,7 @@ Unity 서버 상용 서비스 라이브러리 관점 전수 검토 기록. 코�
 - E2E 루프백(실제 RUDP) 30 + 단위 47 + 생성기 42 = 119 통과. 지연·중복 응답 비오염, 취소/호출별 타임아웃 후
   세션 재사용 등 회귀 방지 테스트 상주(Known-Issues 표).
 - 성능 기준선 존재([[../03-Reference/Performance|Performance]]) — 왕복 ~222ns/384B(루프백, 전송 제외).
-- Unity 대응: netstandard2.1(Unity 2021.2+), 에디터용 Roslyn 4.3 생성기 재빌드 오버라이드(`-p:RoslynAnalyzerApiVersion=4.3.0`).
+- Unity 대응: netstandard2.1(Unity 2021.2+), 생성기 Roslyn 4.3 기준 참조(3.5.0+) — Unity 6 에디터에서 재빌드 없이 직접 구동.
 
 ### 잔여 리스크 (수용 가능 — 추적)
 

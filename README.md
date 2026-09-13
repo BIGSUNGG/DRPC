@@ -6,7 +6,7 @@ DRPC is a distributed RPC library for .NET that runs over reliable UDP. You decl
 - **Serialization** is delegated to [DS_MessageProtocol](https://github.com/BIGSUNGG/DS_MessageProtocol).
 - **DRPC itself** handles contract declaration, source generation, and the runtime hubs.
 
-All runtime packages target `netstandard2.1` (the source generator targets `netstandard2.0`), so they are usable from modern .NET and other `netstandard2.1`-capable targets such as Unity 2021.2+ (they are **not** consumable from .NET Framework, which tops out at `netstandard2.0`).
+All runtime packages target `netstandard2.1` (the source generator targets `netstandard2.0`), so they are usable from modern .NET and other `netstandard2.1`-capable targets such as Unity 2021.2+ (they are **not** consumable from .NET Framework, which tops out at `netstandard2.0`). Since 3.5.0 the generator references Roslyn 4.3, so it also runs directly inside Unity 6's bundled compiler — no rebuilt `-unity` package is needed.
 
 ## Features
 
@@ -159,7 +159,7 @@ That is the full loop: `ListenAsync` on the server, `ConnectAsync` on the client
 | `DRPC.Client` / `DRPC.Server` | Side-specific hub bases, generated `ConnectAsync` / `ListenAsync` wiring |
 | `DRPC.CodeGenerator` | Roslyn source generator (development dependency, analyzer-only reference) |
 
-Current versions: DRPC packages **3.4.0** (release tags are authoritative), `MessageProtocol` **3.1.0** (the unified `[Message]` attribute — see below), `Communication.Network.RUDP.*` / `Communication.Shared` **2.7.0**.
+Current versions: DRPC packages **3.5.0** (release tags are authoritative), `MessageProtocol` **3.1.0** (the unified `[Message]` attribute — see below), `Communication.Network.RUDP.*` / `Communication.Shared` **2.7.0**.
 
 Runtime packages target `netstandard2.1` and run on Unity and other `netstandard2.1`-capable frameworks. Building this repository or the sandbox from source requires the .NET 10 SDK.
 
