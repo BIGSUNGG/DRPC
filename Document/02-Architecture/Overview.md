@@ -3,12 +3,12 @@ project: DS_RPC
 type: architecture
 status: stable
 tags: [architecture, layers, data-flow, payload]
-updated: 2026-09-11
+updated: 2026-09-14
 ---
 
 # Architecture Overview — 재구축 2.0.0
 
-RPC 계층만 구현한다. 전송은 DS_Communication(RUDP), 직렬화는 DS_MessageProtocol — **둘 다 NuGet 안정판 참조**(현재 Communication 2.5.1 · MessageProtocol 3.0.0, 버전 권위는 [[../00-AI/CONTEXT|CONTEXT]]),
+RPC 계층만 구현한다. 전송은 DS_Communication(RUDP), 직렬화는 DS_MessageProtocol — **둘 다 NuGet 안정판 참조**(현재 Communication 2.7.0 · MessageProtocol 3.1.0, 버전 권위는 [[../00-AI/CONTEXT|CONTEXT]]),
 형제 저장소 소스는 참조하지 않는다(근거: [[../05-Decisions/0002-async-only-delivery-and-payload|ADR-0002]] 결정 4).
 
 ## 패키지 그래프

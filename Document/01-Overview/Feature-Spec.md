@@ -3,7 +3,7 @@ project: DS_RPC
 type: overview
 status: stable
 tags: [scope, spec, feature]
-updated: 2026-09-11
+updated: 2026-09-14
 ---
 
 # Feature Spec — 재구축 구현 기능 명세
@@ -14,7 +14,7 @@ updated: 2026-09-11
 
 ## 구현 상태 (2026-09-09)
 
-F1–F9·F11 구현 완료 + **제네릭 프로시저(F12)·**패킷 암호화(F13)**·구현 전 검증 게이트(F14)** 구현 완료**(`dotnet test DRPC.slnx` 133개 통과) — 형제 NuGet **MessageProtocol 3.0.0**(2026-09-11 파괴 변경 마이그레이션 - 단일 `[Message(MessageKind, id, category)]` 속성·카테고리 배분표는 [[../03-Reference/Public-API|Public-API]]), **Communication.Network.RUDP.*/Communication.Shared 2.5.1**(2026-09-11 채택, 하드닝 패치 — API 무변화. CRC32c 무결성·흐름제어·프레임 상한·ConnectTimeout·끊김 레치 재생 + **DTLS 1.2 패킷 암호화** 채택). F10(Template)만 범위 밖.
+F1–F9·F11 구현 완료 + **제네릭 프로시저(F12)·**패킷 암호화(F13)**·구현 전 검증 게이트(F14)** 구현 완료**(`dotnet test DRPC.slnx` 141개 통과) — 형제 NuGet **MessageProtocol 3.1.0**(2026-09-14 채택 — KI-43 게이트 완결·CodeGenerator 의존성 전파, 와이어·공개 API 무변화; 3.0.0 파괴 변경 마이그레이션 이력·카테고리 배분표는 [[../03-Reference/Public-API|Public-API]]), **Communication.Network.RUDP.*/Communication.Shared 2.7.0**(2026-09-14 채택 — TargetHost 이름 전용 매칭 옵트인 전환[`TlsAllowNameOnlyCertificateMatch`]·2.6.0 DTLS 최적화 포함. CRC32c 무결성·흐름제어·프레임 상한·ConnectTimeout·끊김 레치 재생 + **DTLS 1.2 패킷 암호화** 채택). F10(Template)만 범위 밖.
 **`v2.1.0` 릴리스** — 태그 푸시 → run 34136624883 success, 5개 패키지 2.1.0 NuGet 업로드 확인.
 형제 스택은 NuGet 안정판으로만 참조한다(형제 저장소 소스 참조 없음).
 

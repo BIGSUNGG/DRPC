@@ -40,9 +40,18 @@ public sealed class RpcEndpointOptions
 
     /// <summary>
     /// 클라이언트 측 서버 인증서 검증 — 대상 호스트명(SAN/CN 일치). <see cref="ServerCertificate"/> 를 가진 서버에 접속할 때 설정한다.
-    /// 검증 수단이 이것과 <see cref="TlsCertificateValidation"/> 둘 다 없으면 서버 인증서는 기본 거부된다(fail-closed).
+    /// 이름 전용 매칭은 같은 이름의 자체서명 인증서로 중간자가 통과할 수 있어 Communication 2.7.0 부터 옵트인제다 —
+    /// <see cref="TlsAllowNameOnlyCertificateMatch"/> 도 함께 설정해야 수용된다(미설정 시 핸드셰이크 거부, fail-closed).
+    /// 옵트인 시 만료 인증서(NotBefore/NotAfter) 도 거부된다. 실서비스는 <see cref="TlsCertificateValidation"/> 핀닝 권장.
     /// </summary>
     public string? TlsTargetHost { get; set; }
+
+    /// <summary>
+    /// 이름 전용 인증서 매칭(<see cref="TlsTargetHost"/>) 옵트인 — Communication 2.7.0
+    /// <c>RudpTlsOptions.AllowNameOnlyCertificateMatch</c> 전달. 기본 <c>false</c>(fail-closed, 전송 스택과 동일).
+    /// 핀닝(<see cref="TlsCertificateValidation"/>) 사용 시 무의미하다.
+    /// </summary>
+    public bool TlsAllowNameOnlyCertificateMatch { get; set; }
 
     /// <summary>
     /// 클라이언트 측 서버 인증서 검증 — 핀닝 콜백(DER 바이트 → 신뢰 여부). <see cref="RudpTlsOptions.GetSha256Fingerprint(byte[])"/>
@@ -66,5 +75,6 @@ public sealed class RpcEndpointOptions
                 ServerCertificate = ServerCertificate,
                 TargetHost = TlsTargetHost,
                 RemoteCertificateValidation = TlsCertificateValidation,
+                AllowNameOnlyCertificateMatch = TlsAllowNameOnlyCertificateMatch,
             };
 }

@@ -11,7 +11,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
     <!-- ADR-0001: 재구축 버전 출발점 -->
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Authors>BIGSUNGG</Authors>
     <RepositoryUrl>https://github.com/BIGSUNGG/DS_RPC</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

@@ -84,12 +84,34 @@ public class RudpTlsLoopbackTests
             ConnectionKey = Key,
             ConnectTimeoutMs = 5000,
             TlsTargetHost = "localhost", // 접속 주소(127.0.0.1)가 아니라 인증서 CN/SAN 과 일치하면 된다.
+            TlsAllowNameOnlyCertificateMatch = true, // Communication 2.7.0 — 이름 전용 매칭은 옵트인제
         };
         using var client = await RpcClient.ConnectWithOptionsAsync("127.0.0.1", port, clientOptions,
             channel => new E2EClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub)));
 
         Assert.Equal(5, await Within(client.AddAsync(2, 3)));
         client.Dispose();
+    }
+
+    [Fact]
+    public async Task Tls_target_host_without_optin_fails_closed()
+    {
+        int port = NextPort();
+        using X509Certificate2 certificate = CreateTestCertificate("localhost");
+
+        var serverOptions = new RpcEndpointOptions { ConnectionKey = Key, ServerCertificate = certificate };
+        await using var handle = await ListenTls(port, serverOptions);
+
+        // Communication 2.7.0 — TlsTargetHost 만으로는 이름 전용 매칭이 거부된다(옵트인 미설정, fail-closed).
+        var clientOptions = new RpcEndpointOptions
+        {
+            ConnectionKey = Key,
+            ConnectTimeoutMs = 5000,
+            TlsTargetHost = "localhost",
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            RpcClient.ConnectWithOptionsAsync("127.0.0.1", port, clientOptions,
+                channel => new E2EClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub))));
     }
 
     [Fact]

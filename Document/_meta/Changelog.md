@@ -3,10 +3,14 @@ project: DS_RPC
 type: meta
 status: stable
 tags: [meta, changelog]
-updated: 2026-09-13
+updated: 2026-09-14
 ---
 
 # Changelog
+
+## 2026-09-14 — v3.3.0 (release)
+
+- **패키지 3.3.0 게시(minor)** — 형제 스택 채택: `CommunicationPackageVersion` 2.5.1 → **2.7.0**(2.5.2 커넥터 Channel 재시도 계약·2.6.0 TCP null-host 검증 통일·DTLS 송신 풀링·세마포어 폐기·폴링 백오프·2.7.0 RUDP TLS TargetHost 이름 전용 매칭 옵트인 전환), `MessageProtocolPackageVersion` 3.0.0 → **3.1.0**(KI-43 충돌 판정 게이트 완결 — 3.0.0 오탐 제거·CodeGenerator nuspec 의존성 전파, 와이어·공개 API 무변화). **공개 API 가산 1건**: `RpcEndpointOptions.TlsAllowNameOnlyCertificateMatch`(기본 false — Comm 2.7.0 fail-closed 정세 1:1 전달, `TlsTargetHost` 단독 사용은 이제 핸드셰이크 거부). 검증 게이트: Release 빌드 0 오류 · 테스트 141/141(E2E `Tls_target_host_without_optin_fails_closed` 신설) · Sandbox 전 시나리오(평문·DTLS 1.2 핀닝 exit 0) 확인. 버전 표기 동기화: README·CONTEXT·Overview·Feature-Spec·Public-API.
 
 ## 2026-09-13 — v3.2.0 (release)
 

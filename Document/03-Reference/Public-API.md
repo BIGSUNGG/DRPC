@@ -3,10 +3,10 @@ project: DS_RPC
 type: reference
 status: stable
 tags: [reference, api, packages, nuget]
-updated: 2026-09-13
+updated: 2026-09-14
 ---
 
-# Public-API — 재구축 3.2.0
+# Public-API — 재구축 3.3.0
 
 사용자가 실제로 만지는 표면만 싣는다. 생성 산출물(`{Hub}.g.cs`)의 멤버는 §생성기가 만드는 것 참고.
 
@@ -16,11 +16,11 @@ updated: 2026-09-13
 
 | 프로퍼티 | 값 | 패키지 |
 | --------- | ----- | -------- |
-| `MessageProtocolPackageVersion` | `3.0.0` | `MessageProtocol`(런타임 + analyzers/dotnet/cs 생성기 포함, GenericMessage 포함) |
-| `CommunicationPackageVersion` | `2.5.1` | `Communication.Shared`, `Communication.Network.RUDP.{Shared,Client,Server}` |
+| `MessageProtocolPackageVersion` | `3.1.0` | `MessageProtocol`(런타임, GenericMessage 포함 — `MessageProtocol.CodeGenerator` 는 nuspec 의존성 전파로 동반 설치, analyzers/dotnet/cs 동봉은 3.1.0 부터 폐지) |
+| `CommunicationPackageVersion` | `2.7.0` | `Communication.Shared`, `Communication.Network.RUDP.{Shared,Client,Server}` |
 
 저장소 자체는 어떤 형제 프로젝트 경로도 참조하지 않는다(`Source/Sandbox/Test`의 csproj에서 `ProjectReference` 가
-`../../DS_…` 로 가는 경우 없음 — 계약 확인 항목). DRPC 패키지 자체 버전은 릴리스 태그(`v*`)가 권위 — 현재 **3.2.0**(상용 하드닝·가산 API(IsDisconnected·protected ProcessRequestAsync), minor).
+`../../DS_…` 로 가는 경우 없음 — 계약 확인 항목). DRPC 패키지 자체 버전은 릴리스 태그(`v*`)가 권위 — 현재 **3.3.0**(형제 채택 — Comm 2.6.0→2.7.0·MP 3.1.0, TlsTargetHost 이름 전용 매칭 옵트인 플래그 신설, minor).
 
 ### MessageCategory 니블 배분표 (MessageProtocol 3.0.0 마이그레이션, 2026-09-11)
 
@@ -156,7 +156,7 @@ public partial class GameClientHub : ClientHub<IGameServerProcedures, IGameClien
 | ------ | ------ |
 | `DRPC.Client.Network.RpcClient` | `Task<THub> ConnectAsync<THub>(string host, int port, string? connectionKey, Func<IMessageChannel, THub> hubFactory, CancellationToken ct = default)`, 오버로드 `ConnectAsync<THub>(host, port, connectionKey, int connectTimeoutMs, hubFactory, ct = default)` — 침묵 호스트 연결 실패를 상한 이내로 확정(Communication 2.0.1 `ConnectTimeout` 채택, 0=기본 약 5초, 음수는 `ArgumentOutOfRangeException`), `ConnectWithOptionsAsync<THub>(host, port, RpcEndpointOptions, hubFactory, ct)` — 옵션 일괄 지정(키·타임아웃·상한·CRC32c·DTLS) |
 | `DRPC.Server.Network.RpcHost` | `Task<RpcListenHandle> ListenAsync<THub>(int port, string? connectionKey, Func<IMessageChannel, THub> hubFactory, Func<THub, Task>? onConnected, CancellationToken ct = default)`, 오버로드 `ListenAsync<THub>(port, int maxConnections, connectionKey, hubFactory, onConnected, ct = default)` — 동시 수락 연결 상한(연결 고갈 공격 방어, 0=무제한·음수 거부), `ListenWithOptionsAsync<THub>(port, RpcEndpointOptions, hubFactory, onConnected, ct)` — 옵션 일괄 지정 |
-| `DRPC.Shared.Network.RpcEndpointOptions` | `ConnectionKey`·`ConnectTimeoutMs`(0=기본)·`MaxConnections`(0=무제한)·`EnableCrc32c`(양단 일치 필수 — 와이어 비호환, 검출 전용)·`ServerCertificate`(DTLS 서버 인증서)·`TlsTargetHost`(클라 검증 — SAN/CN 일치)·`TlsCertificateValidation`(클라 검증 — 핀닝 콜백, `RudpTlsOptions.GetSha256Fingerprint` 권장; 검증 수단 없으면 기본 거부 — F13, Communication 2.5.0 위임·[[../05-Decisions/0003-dtls-delegation-and-flat-options | ADR-0003]]) + `ToTransportOptions()` |
+| `DRPC.Shared.Network.RpcEndpointOptions` | `ConnectionKey`·`ConnectTimeoutMs`(0=기본)·`MaxConnections`(0=무제한)·`EnableCrc32c`(양단 일치 필수 — 와이어 비호환, 검출 전용)·`ServerCertificate`(DTLS 서버 인증서)·`TlsTargetHost`(클라 검증 — SAN/CN 일치, Communication 2.7.0 부터 `TlsAllowNameOnlyCertificateMatch` 옵트인 필요 — 미설정 시 거부·옵트인 시 만료 인증서도 거부)·`TlsAllowNameOnlyCertificateMatch`(이름 전용 매칭 옵트인, 기본 false — fail-closed)·`TlsCertificateValidation`(클라 검증 — 핀닝 콜백, `RudpTlsOptions.GetSha256Fingerprint` 권장; 검증 수단 없으면 기본 거부 — F13, Communication 2.5.0 위임·[[../05-Decisions/0003-dtls-delegation-and-flat-options | ADR-0003]]) + `ToTransportOptions()` |
 | `DRPC.Shared.Network.HubSessionFactory` | `IMessageConverter Converter`, `ISession CreateRudpSession(IMessageChannel, IHubBase)`, 오버로드 `CreateRudpSession(IMessageChannel, IHubBase, MessageQueueOptions?)`(FrameTimeout·MaxFrameLength 등 세션 큐 정책 — 형제 제안 P3), `RudpTransportOptions CreateTransportOptions(string? connectionKey, int connectTimeoutMs = 0, int maxConnections = 0, bool enableCrc32c = false, RudpTlsOptions? tls = null)`(각 0/false/null=미설정·음수 거부) |
 | `DRPC.Shared.Network.RpcDeliveryMap` | `RudpSendOptions ToSendOptions(this RpcDeliveryMode)` — DRPC↔RUDP 열거형 유일한 대응 지점 |
 
