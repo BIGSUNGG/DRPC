@@ -254,6 +254,27 @@ public class RudpLoopbackTests
     }
 
     [Fact]
+    public async Task Peer_dead_before_subscription_is_swept_from_active_count()
+    {
+        int port = NextPort();
+
+        // 수용→구독 창구에 이미 죽은 허브 — 끊김 이벤트(수명당 1회)는 구독자 없이 발화를 마쳤다.
+        // 스윕이 없으면(수정 전) 이 peer 는 Stop 까지 ActiveConnectionCount 를 1로 유지한다.
+        var accepted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var handle = await RpcHost.ListenAsync(port, Key, channel =>
+        {
+            var hub = new E2EServerHub(hub => HubSessionFactory.CreateRudpSession(channel, hub));
+            hub.NotifyDisconnected(new InvalidOperationException("dead on arrival"));
+            return hub;
+        }, _ => { accepted.TrySetResult(); return Task.CompletedTask; });
+
+        using var client = await E2EClientHub.ConnectAsync("127.0.0.1", port, Key);
+
+        await accepted.Task; // 수용(→스윕) 완료 관측 — 이 시점 카운터가 0이어야 한다
+        await WaitUntilAsync(() => handle.ActiveConnectionCount == 0); // 대기 없이 즉시 회수
+    }
+
+    [Fact]
     public async Task Queue_options_flow_through_session_factory()
     {
         int port = NextPort();

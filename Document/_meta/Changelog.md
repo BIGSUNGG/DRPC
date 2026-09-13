@@ -10,6 +10,39 @@ updated: 2026-09-13
 
 문서 변경 기록(최신 위). 코드 변경은 커밋 메시지로 추적한다.
 
+## 2026-09-13 (3차)
+
+- **상용 하드닝 리뷰 수정 반영(공개 API·와이어 무변화)** — 3각 리뷰의 확정 수정 4건:
+  1. 타이머 주차 조건 확장: 시간 제한 대기(deadline > 0)가 하나도 없으면 주차 — 무제한(롱폴) 호출만 남은 피어의
+     1Hz 틱 영구 유지 해소. 판정은 게이트 안에서 재평가(스캔 루프의 낡은 값으로 판정하면 TryAdd 직후
+     `EnsureTimeoutTimer` 와의 재생성 경쟁이 열린다 — 기존 `IsEmpty` 와 동일한 경쟁 안전성 유지).
+  2. `RpcHost` 조기 단절 피어 스윕 E2E 회귀 테스트 신규(수용→구독 창구 단절 허브 → `onConnected` 관측 후
+     `ActiveConnectionCount` 0 확인 — 수정 전엔 1 유지로 8초 타임아웃 실패).
+  3. Dispose 경쟁 테스트 관측 강화: `ProcessRequestAsync` 를 protected 로 노출하고 `TestHub.DispatchForTest`
+     로 디스패치 태스크를 await — 방화벽 부재(수정 전)면 `ObjectDisposedException` 이 테스트로 샌다.
+     (internal 심 + `InternalsVisibleTo` 는 PolySharp 내부 폴리필이 테스트 어셈블리로 새어 CS0433 을 내 폐기 —
+     protected 노출은 기존 TestHub 패턴과 동일.)
+  4. 타이머 주차 테스트의 고정 2.5초 수면을 `WaitUntilAsync` 폴링으로 교체(약 2.4초 단축·플레이크 창 축소).
+- 테스트 2건 추가(무제한 잔존 주차·조기 단절 스윕) — 총 140개 통과(Shared 52·E2E 39·CodeGenerator 49).
+- 문서: `Public-API`(RpcTimeout 주차 주석)·`Production-Hardening`(§5 TraceListener 상용 연결 권고)·
+  `CONTEXT`(테스트 수·다음 릴리스 ≥ v3.2.0 가산 원장 주석) 갱신.
+
+## 2026-09-13 (2차)
+
+- **상용 하드닝 — HubBase·RpcHost 런타임 결함 5건 수정(공개 API·와이어 무변화, 가산 1건)**
+  1. fire-and-forget 수신 처리 방화벽: `ProcessRequestAsync` 를 코어+방화벽으로 분리 — 서버 중지·세션 소멸과 경쟁하는
+     세마포 해지(ObjectDisposedException)·끊긴 세션으로의 Overloaded 오류 송신이 미관측 태스크 예외로 새던 경로 차단(Trace 로만 남긴다).
+     `finally` 의 `gate.Release()` 도 해지 경쟁을 명시적 무시 처리.
+  2. 만료 보고 문구 정확화: `TimeoutException` 이 허브 기본 `RpcTimeout` 이 아닌 그 호출에 실제 적용된 예산
+     (`[RemoteProcedure(TimeoutMs)]` 오버라이드 포함)을 보고 — `PendingCall` 이 effective 예산을 보관.
+  3. 타임아웃 타이머 유휴 주차: 대기표가 비면 스캔 타이머를 반납, 다음 시간 제한 호출 시 재생성(이중 검사로 경쟁 차단).
+     역호출을 한 번이라도 한 피어마다 1Hz 틱이 서버 수명 내내 쌓이는 유휴 비용·Dispose 누락 시 타이머가 허브를 고정하는 누수 해소.
+  4. 조기 단절 피어 즉시 회수: 수용→구독 창구에 끊긴 허브는 `Disconnected` 이벤트(수명당 1회)를 못 받아 `RpcHost.peers` 에
+     Stop 까지 남던 유출 — 신규 `HubBase.IsDisconnected` 관측 후 구독 직후 회거. `ActiveConnectionCount` 부풀림 동시 해소.
+  5. `RpcTimeout` ticks volatile 저장 — 32비트 플랫폼(Unity IL2CPP armv7) TimeSpan 티어 방지.
+- 테스트 4건 추가(호출별 예산 보고·타이머 주차/재생성·IsDisconnected 래치·Dispose 경쟁 무결) — 총 138개 통과.
+- `Public-API`(`IsDisconnected`·RpcTimeout 티어 주석)·`Production-Hardening`(§7 ActiveConnectionCount 정확성)·`CONTEXT`(테스트 수) 갱신.
+
 ## 2026-09-13
 
 - **NuGet 패키지 설명 영문 재작성** — 5패키지(`DRPC.Attribute`·`CodeGenerator`·`Shared`·`Client`·`Server`) `<Description>` 을 한국어 한 줄에서 자기완결 영문으로 보강(패밀리 소개 + 기능 목록 + TFM/Unity 2021.2+ 호환 + 참조 방법). 각 패키지가 NuGet 에서 단독 노출되는 점을 고려해 전부 단독 독해 가능하게 작성. 팩 검증(`dotnet pack` nuspec 확인) 완료.

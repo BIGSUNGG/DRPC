@@ -82,4 +82,7 @@ internal sealed class TestHub : HubBase
     public new Task<byte[]> RequestRPC(int methodId, byte[] parameterData, RpcDeliveryMode mode, TimeSpan? timeout,
         CancellationToken cancellationToken = default)
         => base.RequestRPC(methodId, parameterData, mode, timeout, cancellationToken);
+
+    /// <summary>fire-and-forget 디스패치 태스크를 관측한다 — 방화벽 흡수 여부 검증용.</summary>
+    public Task DispatchForTest(ProcedureCallRequestMessage message) => ProcessRequestAsync(message);
 }

@@ -3,7 +3,7 @@ project: DS_RPC
 type: guide
 status: stable
 tags: [guide, production, hardening, operations]
-updated: 2026-09-09
+updated: 2026-09-13
 ---
 
 # Production-Hardening — 상용 투입 런북
@@ -85,6 +85,8 @@ hub.SendErrorDetails = false;   // 기본 true(개발 편의). 인터넷 노출 
 
 `false` 시 `Unhandled` 원격 응답은 고정 문구. 서버 측 `Trace` 기록은 설정과 무관하게 항상 남는다(운영자 관측 보장).
 
+엔진 진단 전부(미처리 예외·디스패치 방화벽 기록 포함)는 `System.Diagnostics.Trace` 로 나간다 — 상용 호스트에서는 `TraceListener` 를 달아 파일·로그 파이프라인으로 연결해야 관측된다(기본 리스너만으로는 헤드리스 서비스에서 사라진다).
+
 ## 6. 큐 정책 — 슬로로리스·프레임 폭탄
 
 ```csharp
@@ -102,6 +104,7 @@ using var client = await RpcClient.ConnectAsync(host, port, key,
 ```csharp
 await using var handle = await GameServerHub.ListenAsync(port, 100, key, factory, onConnected);
 int live = handle.ActiveConnectionCount;        // 수락된 peer 수 — 상한 포화 근사 지표
+// 수용 직후 끊긴 피어(구독 전 단절)도 즉시 회수되므로 이 값은 실제 생존 peer 수를 따라간다.
 
 hub.Disconnected += () =>
 {

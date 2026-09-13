@@ -87,6 +87,13 @@ public static class RpcHost
             peers.TryAdd(hub, 0);
             hub.Disconnected += () => peers.TryRemove(hub, out _);
 
+            // 수용→구독 창구에 단절된 피어(세션 생성 중 끊김)는 끊김 이벤트를 못 받는다(허브 수명당 1회 발화) —
+            // 즉시 회수하지 않으면 Stop 까지 peers 에 남아 ActiveConnectionCount 를 부풀린다.
+            if (hub.IsDisconnected)
+            {
+                peers.TryRemove(hub, out _);
+            }
+
             if (onConnected is null)
             {
                 return;

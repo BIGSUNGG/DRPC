@@ -61,6 +61,101 @@ public class HubBaseTests
     }
 
     [Fact]
+    public async Task RequestRPC_PerCallTimeout_MessageReportsPerCallBudget()
+    {
+        // 진단 정확성 — 호출별 예산(50ms)으로 만료됐는데 허브 기본(30s)을 보고하면 운영자가 잘못된 노브를 의심한다.
+        var session = new FakeSession();
+        using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromSeconds(30) };
+
+        TimeoutException ex = await Assert.ThrowsAsync<TimeoutException>(() =>
+            hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered, TimeSpan.FromMilliseconds(50)));
+
+        Assert.Contains("00:00:00.05", ex.Message);
+        Assert.DoesNotContain("00:00:30", ex.Message);
+    }
+
+    [Fact]
+    public async Task TimeoutTimer_ParksWhenPendingTableIsEmpty()
+    {
+        // 유휴 주차 — 대기표가 비면 1Hz 타이머를 반납하고, 다음 시간 제한 호출 시 재생성된다(피어 수만큼 틱이 쌓이는 서버 유휴 비용 절감).
+        var session = new FakeSession();
+        using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromMilliseconds(50) };
+
+        var timerField = typeof(HubBase).GetField("_timeoutTimer",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+        // 호출 시작과 동시에 타이머가 보호 중이다(EnsureTimeoutTimer 는 송신 await 전 동기 실행).
+        Task<byte[]> pending = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
+        Assert.NotNull(timerField.GetValue(hub));
+        await Assert.ThrowsAsync<TimeoutException>(() => pending);
+
+        // 만료를 처리한 같은 틱이 스캔을 마치면 주차한다 — 수면 대신 폴링으로 기다린다(빠르고 플레이크 창이 좁다).
+        await WaitUntilAsync(() => timerField.GetValue(hub) is null);
+
+        // 재생성 — 다음 시간 제한 호출은 즉시 새 타이머의 보호를 받는다(만료 틱이 다시 같은 틱에 주차하므로 시작 직후에만 관측).
+        Task<byte[]> second = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
+        Assert.NotNull(timerField.GetValue(hub));
+        await Assert.ThrowsAsync<TimeoutException>(() => second);
+    }
+
+    [Fact]
+    public async Task TimeoutTimer_ParksWhenOnlyInfiniteBudgetCallsRemain()
+    {
+        // 무제한 예산(롱폴) 호출만 남은 피어도 주차한다 — deadline 0 은 스캔 대상이 아니어서 틱이 일만 한다.
+        // 수정 전(대기표 비었을 때만 주차)에는 무제한 호출이 하나라도 남으면 1Hz 틱이 허브 수명 내내 유지됐다.
+        var session = new FakeSession();
+        using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromMilliseconds(50) };
+
+        var timerField = typeof(HubBase).GetField("_timeoutTimer",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+        Task<byte[]> timed = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered); // 타이머 보호 시작
+        Task<byte[]> infinite = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered, Timeout.InfiniteTimeSpan);
+        await Assert.ThrowsAsync<TimeoutException>(() => timed); // 시간 제한 대기 소멸 — 무제한만 남는다
+
+        await WaitUntilAsync(() => timerField.GetValue(hub) is null); // 주차 — 수정 전엔 테이블이 비지 않아 영구 틱
+
+        hub.OnReceiveRPCResponseMessage(new ProcedureCallResponseMessage(2u, Payload)); // 무제한 호출은 응답 수용
+        Assert.Equal(Payload, await infinite);
+    }
+
+    [Fact]
+    public void IsDisconnected_LatchesAfterDisconnectNotification()
+    {
+        // 구독 이전에 끊긴 허브는 Disconnected 이벤트를 받을 수 없다 — 리스너 회수용 관측 신호가 필요하다(RpcHost 즉시 회수).
+        var session = new FakeSession();
+        using var hub = new TestHub(session);
+
+        Assert.False(hub.IsDisconnected);
+        hub.NotifyDisconnected(new InvalidOperationException("test disconnect"));
+        Assert.True(hub.IsDisconnected);
+    }
+
+    [Fact]
+    public async Task Dispose_WhileRequestInFlight_DoesNotLeakUnobservedException()
+    {
+        // 서버 중지 정상 경로 — 처리 중 요청이 있어도 Dispose(세마포 해지)는 미관측 예외를 남기지 않아야 한다.
+        var session = new FakeSession();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var hub = new TestHub(session) { MaxConcurrentIncoming = 1 };
+        hub.Register(1, async _ =>
+        {
+            started.TrySetResult();
+            await release.Task;
+            return Payload;
+        });
+
+        // 테스트 이중(TestHub)으로 디스패치 태스크를 관측한다 — 방화벽이 없으면(수정 전) 해지 경쟁의 ObjectDisposedException 이 여기로 샌다.
+        Task processing = hub.DispatchForTest(new ProcedureCallRequestMessage(1u, 1, Payload));
+        await started.Task;
+        hub.Dispose(); // 슬롯 점유 중 게이트 해지 — finally 의 Release 가 예외를 낼 수 있는 순간
+        release.TrySetResult();
+
+        await processing; // 방화벽이 정상 종료 경쟁을 흡수 — 디스패치 태스크는 무결하게 완료되어야 한다
+    }
+
+    [Fact]
     public async Task RequestRPC_Timeout_ThrowsTimeoutException()
     {
         var session = new FakeSession();

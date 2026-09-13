@@ -41,16 +41,20 @@ public abstract class HubBase : IHubBase, IDisposable
 
     sealed class PendingCall
     {
-        public PendingCall(TaskCompletionSource<byte[]> tcs, long deadlineUtcTicks)
+        public PendingCall(TaskCompletionSource<byte[]> tcs, long deadlineUtcTicks, TimeSpan effectiveTimeout)
         {
             Tcs = tcs;
             DeadlineUtcTicks = deadlineUtcTicks;
+            EffectiveTimeout = effectiveTimeout;
         }
 
         public TaskCompletionSource<byte[]> Tcs { get; }
 
         /// <summary>0 이면 무제한(스캔 대상 아님).</summary>
         public long DeadlineUtcTicks { get; }
+
+        /// <summary>이 호출에 실제 적용된 예산(허브 기본 또는 호출별 오버라이드) — 만료 보고 문구용.</summary>
+        public TimeSpan EffectiveTimeout { get; }
     }
 
     readonly ConcurrentDictionary<uint, PendingCall> _pendingCalls = new();
@@ -78,7 +82,14 @@ public abstract class HubBase : IHubBase, IDisposable
     /// outgoing RPC 응답 대기 상한. 기본 30초. <see cref="Timeout.InfiniteTimeSpan"/> 또는 0 이하이면 무제한.
     /// 만료된 호출은 <see cref="TimeoutException"/> 으로 완료된다.
     /// </summary>
-    public TimeSpan RpcTimeout { get; set; } = TimeSpan.FromSeconds(30);
+    /// <remarks>32비트 플랫폼(Unity IL2CPP 등)에서의 TimeSpan 티어 방지를 위해 ticks 를 volatile 로 읽고 쓴다.</remarks>
+    public TimeSpan RpcTimeout
+    {
+        get => new TimeSpan(Volatile.Read(ref _rpcTimeoutTicks));
+        set => Volatile.Write(ref _rpcTimeoutTicks, value.Ticks);
+    }
+
+    long _rpcTimeoutTicks = TimeSpan.FromSeconds(30).Ticks;
 
     /// <summary>
     /// 동시 Incoming 처리 상한. 0(기본)이면 무제한. 초과하면 non-one-way 요청은
@@ -133,6 +144,13 @@ public abstract class HubBase : IHubBase, IDisposable
     /// </summary>
     public DisconnectReason? LastDisconnectReason { get; private set; }
 
+    /// <summary>
+    /// <see cref="Disconnected"/> 이벤트가 이미 발화했는지(원격 끊김·<see cref="Disconnect()"/>·<see cref="Dispose"/> 완료).
+    /// 이벤트는 허브 수명당 1회라 <b>구독 이전에 끊긴 허브는 이벤트를 받을 수 없다</b> — 리스너 측 즉시 회수,
+    /// 늦은 구독자의 사전 검사용 관측 신호.
+    /// </summary>
+    public bool IsDisconnected => Volatile.Read(ref _disconnectRaised) != 0;
+
     protected HubBase(Func<HubBase, ISession> sessionFactory)
     {
         if (sessionFactory is null)
@@ -181,9 +199,10 @@ public abstract class HubBase : IHubBase, IDisposable
 
         uint callId = AllocateCallId();
         var waitResponse = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-        long deadline = ComputeDeadlineUtcTicks(timeout);
+        TimeSpan effectiveTimeout = timeout ?? RpcTimeout;
+        long deadline = ComputeDeadlineUtcTicks(effectiveTimeout);
 
-        if (!_pendingCalls.TryAdd(callId, new PendingCall(waitResponse, deadline)))
+        if (!_pendingCalls.TryAdd(callId, new PendingCall(waitResponse, deadline, effectiveTimeout)))
         {
             throw new InvalidOperationException($"The call id {callId} is already in use.");
         }
@@ -219,9 +238,8 @@ public abstract class HubBase : IHubBase, IDisposable
         }
     }
 
-    long ComputeDeadlineUtcTicks(TimeSpan? timeout)
+    static long ComputeDeadlineUtcTicks(TimeSpan effective)
     {
-        TimeSpan effective = timeout ?? RpcTimeout;
         if (effective == Timeout.InfiniteTimeSpan || effective <= TimeSpan.Zero)
         {
             return 0;
@@ -258,9 +276,38 @@ public abstract class HubBase : IHubBase, IDisposable
 
             if (_pendingCalls.TryRemove(pair.Key, out var pending))
             {
-                pending.Tcs.TrySetException(new TimeoutException($"RPC call {pair.Key} timed out after {RpcTimeout}."));
+                pending.Tcs.TrySetException(
+                    new TimeoutException($"RPC call {pair.Key} timed out after {pending.EffectiveTimeout}."));
             }
         }
+
+        // 유휴 주차 — 시간 제한 대기(deadline > 0)가 하나도 없으면 타이머를 반납한다. 무제한(롱폴) 호출만
+        // 남은 피어도 주차 대상이다(무제한은 스캔 대상이 아니어서 틱이 일만 한다). 역호출이라도 한 번 한 피어마다
+        // 1Hz 틱이 서버 수명 내내 남는 유휴 비용과, Dispose 누락 시 타이머가 허브를 고정하는 누수를 함께 끊는다.
+        // 조건은 게이트 안에서 재평가한다 — 스캔 루프의 낡은 값으로 판정하면 TryAdd 직후 EnsureTimeoutTimer 와의
+        // 재생성 경쟁이 열린다(양쪽 다 같은 락을 쓰므로 게이트 안 판정은 주파를 직렬화한다).
+        lock (_timeoutTimerGate)
+        {
+            if (_timeoutTimer is not null && !HasTimedPendingCall())
+            {
+                _timeoutTimer.Dispose();
+                _timeoutTimer = null;
+            }
+        }
+    }
+
+    /// <summary>시간 제한 대기(deadline &gt; 0)가 하나라도 남았는가. 주차 판정용 — 게이트 안에서 호출해 경쟁을 직렬화한다.</summary>
+    bool HasTimedPendingCall()
+    {
+        foreach (var pair in _pendingCalls)
+        {
+            if (pair.Value.DeadlineUtcTicks > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     uint AllocateCallId()
@@ -282,15 +329,25 @@ public abstract class HubBase : IHubBase, IDisposable
     }
 
     /// <summary>
-    /// Incoming RPC 호출 권한 검증 훅. 기본은 전부 허용(true).
-    /// 서버 허브에서 override 해 메서드별 호출 권한(예: 관리자 전용 프로시저)을 검사한다.
-    /// 거부 시 non-one-way 호출은 <see cref="RpcErrorCode.PermissionDenied"/> 오류를 받고 one-way 는 폐기된다.
-    /// 메서드 등록표 조회보다 먼저 판정하므로 미등록 MethodId 의 존재 여부도 노출하지 않는다.
-    /// 처리 동시 상한(MaxConcurrentIncoming) 슬롯 안에서 호출됨 — 긴 검사는 상한 소진에 유의.
+    /// Fire-and-forget 방화벽 — 아래 코어를 벗어나는 예외는 전부 미관측 태스크 예외가 된다
+    /// (서버 중지·세션 소멸과 경쟁하는 게이트 해지, 끊긴 세션으로의 Overloaded 오류 송신 등).
+    /// 정상 종료 경로에서 나는 잔여 예외까지 잡아 Trace 로만 남긴다.
+    /// protected 로 디스패치 태스크를 관측 가능하게 돌려준다(테스트 이중 관측용 — 생성 스텁도 사용하지 않는다, 사용자 코드 직접 호출 대상 아님).
     /// </summary>
-    protected virtual Task<bool> AuthorizeRequestAsync(int methodId) => Task.FromResult(true);
+    protected async Task ProcessRequestAsync(ProcedureCallRequestMessage message)
+    {
+        try
+        {
+            await ProcessRequestCoreAsync(message).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.TraceError(
+                $"RPC request {message.MethodId} (call {message.CallId}) dispatch failed: {ex}");
+        }
+    }
 
-    async Task ProcessRequestAsync(ProcedureCallRequestMessage message)
+    async Task ProcessRequestCoreAsync(ProcedureCallRequestMessage message)
     {
         bool oneWay = IsOneWay(message);
 
@@ -379,7 +436,14 @@ public abstract class HubBase : IHubBase, IDisposable
         }
         finally
         {
-            gate?.Release();
+            try
+            {
+                gate?.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 허브 Dispose·MaxConcurrentIncoming 재설정이 슬롯 점유 중 게이트를 해지했다 — 정상 종료 경쟁.
+            }
         }
     }
 
@@ -394,6 +458,15 @@ public abstract class HubBase : IHubBase, IDisposable
     /// <summary>요청 MethodId 에 등록된 전송 방식. 미등록이면 ReliableOrdered.</summary>
     RpcDeliveryMode ResolveMode(int methodId)
         => MethodDeliveryModes.TryGetValue(methodId, out var mode) ? mode : RpcDeliveryMode.ReliableOrdered;
+
+    /// <summary>
+    /// Incoming RPC 호출 권한 검증 훅. 기본은 전부 허용(true).
+    /// 서버 허브에서 override 해 메서드별 호출 권한(예: 관리자 전용 프로시저)을 검사한다.
+    /// 거부 시 non-one-way 호출은 <see cref="RpcErrorCode.PermissionDenied"/> 오류를 받고 one-way 는 폐기된다.
+    /// 메서드 등록표 조회보다 먼저 판정하므로 미등록 MethodId 의 존재 여부도 노출하지 않는다.
+    /// 처리 동시 상한(MaxConcurrentIncoming) 슬롯 안에서 호출됨 — 긴 검사는 상한 소진에 유의.
+    /// </summary>
+    protected virtual Task<bool> AuthorizeRequestAsync(int methodId) => Task.FromResult(true);
 
     Task SendErrorAsync(uint callId, int errorCode, string message, RpcDeliveryMode mode)
         => _session.SendAsync(new ProcedureCallErrorMessage(callId, errorCode, message), mode.ToSendOptions());

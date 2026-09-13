@@ -3,7 +3,7 @@ project: DS_RPC
 type: reference
 status: stable
 tags: [reference, api, packages, nuget]
-updated: 2026-09-11
+updated: 2026-09-13
 ---
 
 # Public-API — 재구축 3.1.0
@@ -108,11 +108,13 @@ public abstract class ServerHub<TSPD, TCPD> : HubBase<TSPD, TCPD> { /* 위와 �
 
 | 멤버 | 의미 |
 | ------ | ------ |
-| `TimeSpan RpcTimeout { get; set; }` | 기본 30초. `Timeout.InfiniteTimeSpan`·0 이하는 무제한. 만료는 `TimeoutException` |
+| `TimeSpan RpcTimeout { get; set; }` | 기본 30초. `Timeout.InfiniteTimeSpan`·0 이하는 무제한. 만료는 `TimeoutException`(만료 보고 문구는 그 호출에 실제 적용된 예산을 말한다). ticks 를 volatile 저장해 32비트 플랫폼(IL2CPP) 티어 방지. 만료 스캔 타이머(1Hz)는 시간 제한 대기가 하나도 없으면 주차한다(무제한 대기만 남아도 — 다음 시간 제한 호출 시 재생성) |
 | `int MaxConcurrentIncoming { get; set; }` | 기본 0(무제한). 초과 시 non-one-way 는 `Overloaded` 오류, one-way 은 drop. **연결 직후·유휴 시에만 설정** |
 | `DisconnectReason? LastDisconnectReason { get; }` | 관측된 마지막 끊김 사유(끊김 전 null) — `Disconnected` 핸들러 안에서 읽는다. `FlowControl` = 수신 미처리 상한 단결(백프레셔 신호, 형제 제안 P4) |
+| `bool IsDisconnected { get; }` | `Disconnected` 이벤트가 이미 발화했는지. 이벤트는 허브 수명당 1회라 **구독 이전에 끊긴 허브는 이벤트를 받을 수 없다** — 리스너(`RpcHost`)의 즉시 회수·늦은 구독자의 사전 검사용 관측 신호 |
 | `bool SendErrorDetails { get; set; } = true` | `Unhandled` 오류의 원격 응답에 예외 상세 실을지(기본 true·기존 동작). false면 고정 문구 전송 — 인터넷 노출 엔드포인트 권장. 서버측 Trace 기록은 항상 유지 |
 | `protected virtual Task<bool> AuthorizeRequestAsync(int methodId)` | 호출 권한 검증 훯(기본 전부 허용). 서버 허브 override 로 메서드별 권한 검사 — 거부 시 non-one-way 는 `PermissionDenied` 오류, one-way 는 drop. 등록표 조회 전에 판정(메서드 존재 노출 없음) |
+| `protected Task ProcessRequestAsync(ProcedureCallRequestMessage message)` | 수신 요청 디스패치(예외 방화벽 포함). 테스트 이중 관측용 시임 — 사용자 코드 직접 호출 비대상(생성 스텁도 호출하지 않는다) |
 | `int MaxPendingCalls { get; set; }` | 기본 0(무제한). 응답 대기 중 outgoing 호출 상한 — 도달 시 새 호출은 즉시 `InvalidOperationException`(fail-fast). 검사·등록 경쟁으로 순간적 초과 가능(근사 강제) |
 | `event Action? Disconnected` | 끊김 1회(대기 호출은 이미 실패 처리된 뒤) |
 | `void Disconnect()` | 대기 취소 + 세션 끊김 + 이벤트 |
@@ -197,7 +199,7 @@ public partial class GameClientHub : ClientHub<IGameServerProcedures, IGameClien
 
 ```powershell
 dotnet build DRPC.slnx -c Release        # 5 라이브러리 + Sandbox 3 + Test 3
-dotnet test  DRPC.slnx -c Release        # 132개 통과 (47 생성기 / 47 단위 / 38 E2E RUDP 루프백)
+dotnet test  DRPC.slnx -c Release        # 140개 통과 (49 생성기 / 52 단위 / 39 E2E RUDP 루프백)
 ```
 
 `Debug` 로 CLI 빌드하면 Roslyn 언어 서버가 `DRPC.CodeGenerator.dll`(bin/Debug) 을 점유해 복사가 실패할 수 있다 —
