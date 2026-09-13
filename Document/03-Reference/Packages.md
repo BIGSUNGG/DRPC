@@ -18,18 +18,18 @@ NuGet 게시 5패키지. **패키지 설명(Description)의 원천은 각 csproj
 | `DRPC.Client` | netstandard2.1 | Shared + RUDP.Client(NuGet) | 클라이언트 허브·RUDP 접속(DTLS 1.2 옵션) |
 | `DRPC.Server` | netstandard2.1 | Shared + RUDP.Server(NuGet) | 서버 허브·RUDP 리스너(연결 키·인증 훅·DTLS 1.2 옵션) |
 
-## Unity 재빌드 (-unity 접미사) — 로컬 피드
+## Unity 재빌드 — 로컬 피드
 
 Unity 6.0 LTS 번들 Roslyn = **Microsoft.CodeAnalysis 4.3.0.0**(에디터 `Data/DotNetSdkRoslyn` 실측). 기본 빌드가 참조하는 4.14 DLL은 CS9057로 제너레이터가 스킵되므로, Unity 소비용은 아래 오버라이드로 재빌드한다:
 
 ```powershell
 dotnet pack Source/DRPC.CodeGenerator -c Release `
-  -p:RoslynAnalyzerApiVersion=4.3.0 -p:Version=3.4.0-unity -o artifacts/nupkg-unity
+  -p:RoslynAnalyzerApiVersion=4.3.0 -p:Version=3.5.0 -o artifacts/nupkg-unity
 ```
 
-- 배치: `C:/Projects/DS/unity-nuget/`(로컬 폴더 피드 — MessageProtocol.CodeGenerator 3.1.0-unity와 공용). 이전 `-unity` 패키지는 폴백으로 유지.
-- 검증: nupkg 내 `analyzers/dotnet/cs/DRPC.CodeGenerator.dll`의 AssemblyRef가 `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`이고 TFM netstandard2.0(System.Reflection.Metadata 기반 확인).
-- 버전 정책: 업스트림 버전 + `-unity` 접미사(nuget.org 게시물과 구분). 소비는 Unity 프로젝트의 `NuGet.config`·UPM 커스텀 레지스트리가 이 폴더를 가리킨다.
+- 배치: `C:/Projects/DS/unity-nuget/`(로컬 폴더 피드 — MessageProtocol.CodeGenerator 3.1.0-unity와 공용). 이전 패키지(3.3.0/3.4.0-unity)는 폴백으로 유지.
+- 검증: nupkg 내 `analyzers/dotnet/cs/DRPC.CodeGenerator.dll`의 AssemblyRef가 `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`이고 TFM netstandard2.0(System.Reflection.Metadata 기반 확인). 스크립트: `artifacts/nupkg-unity/verify-nupkg.ps1`(gitignore).
+- **버전 정책 (2026-09-14 사용자 결정)**: 3.5.0부터 접미사 없는 자체 버전 라인(3.4.0 → 3.5.0). 접미사 없는 버전은 로컬 피드가 nuget.org보다 높아 우선 해석된다. **주의**: nuget.org 게시 버전과 같은 숫자를 쓰면 서로 다른 빌드가 충돌하므로, 게시 시 유니티 피드를 먼저 갱신하거나 버전을 건너뛴다. 구 `-unity` 접미사(≤3.4.0)는 역사적 경로로만 참고.
 
 ## NuGet Description 규약 (2026-09-13)
 

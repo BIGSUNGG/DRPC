@@ -8,6 +8,11 @@ updated: 2026-09-14
 
 # Changelog
 
+## 2026-09-14 — Unity 피드 DRPC.CodeGenerator 3.5.0 배포 (접미사 폐지)
+
+- 유니티 피드(`C:/Projects/DS/unity-nuget/`)에 **DRPC.CodeGenerator 3.5.0**(Roslyn 4.3 재빌드, 소스는 3.4.0과 동일) 배포. 사용자 결정으로 `-unity` 접미사를 폐지하고 접미사 없는 자체 버전 라인으로 전환 — AssemblyRef `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`·TFM netstandard2.0 검증 완료, 3.3.0/3.4.0-unity는 폴백 유지.
+- [[../03-Reference/Packages|Packages]]의 재빌드 절차 섹션에 새 버전 정책(자체 라인 + nuget.org 버전 충돌 주의) 반영. 코드·빌드 로직 변경 없음
+
 ## 2026-09-14 — Unity 피드 DRPC.CodeGenerator 3.4.0-unity 갱신
 
 - 로컬 유니티 피드(`C:/Projects/DS/unity-nuget/`)의 DRPC.CodeGenerator를 3.3.0-unity → **3.4.0-unity**로 갱신(main 기준, `-p:RoslynAnalyzerApiVersion=4.3.0` 재빌드). AssemblyRef `Microsoft.CodeAnalysis(.CSharp) 4.3.0.0`·TFM netstandard2.0 검증 완료. 3.3.0-unity는 폴백 유지.
