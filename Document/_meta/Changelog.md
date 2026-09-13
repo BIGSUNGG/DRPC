@@ -8,6 +8,16 @@ updated: 2026-09-14
 
 # Changelog
 
+## 2026-09-14 — DRPCGEN003 선언부 검증·엄격 규칙 (미릴리스)
+
+- **타입 게이트 3각 강화** — `[RemoteProcedure]` 매개변수·반환 검증(DRPCGEN003)이 허브 배선이 아닌 속성 자체에서 발동한다:
+  1. **선언부 발동**: 생성기가 메서드 단위로 검증 — 계약 어셈블리 단독 빌드에서 바로, 메서드 선언 라인에 찍힌다(기존: 허브 상속 시에만, 메타데이터 경유로 위치 없는 베어 CSC 에러). 허브 측은 메타데이터 선언의 안전망으로 잔류(허브 위치 진단).
+  2. **엄격 규칙**: `MessageStyleOf` 가 `IMessageSerializable<T>` 구현 폴백을 폐기 — `[Message]`/`[GenericMessage]` 표시 속성이 없으면 구현 여부와 무관하게 거부.
+  3. **스켈레톤 배출**: 검증 실패 시 생성기가 전체 생성물 대신 `_Implementation`/`_Validate` 정의 선언+베이스 생성자만 배출 — 사용자 partial 이 고아가 되는 CS0759 후속 에러 벽(13건 관측) 제거. DRPCGEN003 이 유일한 에러.
+- 계약 프로젝트(Sandbox.Contracts)가 `DRPC.CodeGenerator` 를 애널라이저(`OutputItemType="Analyzer"`)로 추가 참조 — 선언부 검증은 계약 어셈블리에서 돈다. 소비자 안내는 Overview 갱신.
+- 테스트 3건 추가(선언부 허브 없음·엄격 규칙·스켈레톤 CS0759 0건) — 총 144개 통과(52/52/40). 검증: Release 빌드 0 오류, Sandbox 재현([Message] 제거 → Contracts/Server 모두 DRPCGEN003 위치 진단·CS 0건, 복원 → 전 green).
+- 문서: Public-API(진단 표·테스트 수), Overview(미지원·선언부 우선 서술) 갱신.
+
 ## 2026-09-14 — v3.3.0 (release)
 
 - **패키지 3.3.0 게시(minor)** — 형제 스택 채택: `CommunicationPackageVersion` 2.5.1 → **2.7.0**(2.5.2 커넥터 Channel 재시도 계약·2.6.0 TCP null-host 검증 통일·DTLS 송신 풀링·세마포어 폐기·폴링 백오프·2.7.0 RUDP TLS TargetHost 이름 전용 매칭 옵트인 전환), `MessageProtocolPackageVersion` 3.0.0 → **3.1.0**(KI-43 충돌 판정 게이트 완결 — 3.0.0 오탐 제거·CodeGenerator nuspec 의존성 전파, 와이어·공개 API 무변화). **공개 API 가산 1건**: `RpcEndpointOptions.TlsAllowNameOnlyCertificateMatch`(기본 false — Comm 2.7.0 fail-closed 정세 1:1 전달, `TlsTargetHost` 단독 사용은 이제 핸드셰이크 거부). 검증 게이트: Release 빌드 0 오류 · 테스트 141/141(E2E `Tls_target_host_without_optin_fails_closed` 신설) · Sandbox 전 시나리오(평문·DTLS 1.2 핀닝 exit 0) 확인. 버전 표기 동기화: README·CONTEXT·Overview·Feature-Spec·Public-API.

@@ -71,7 +71,8 @@ DRPC.Shared  HubBase ── ISession.SendAsync(msg, RudpSendOptions) ──▶ C
 | Standalone/Group/Generic 메시지 | `MessageSerializer.SerializeToWriter(v, ref buf)` — 런타임 타입 기준 dispatch, **그룹 다형성 보존** |
 
 읽기는 `MessageBufferReader` 로 같은 순서를 거꾸로 밟는다(`DeserializeFromReader` 는 헤더의 ID 로 라우팅).
-미지원: `ref/out` 매개변수, 사전류, `Task`/`Task<T>` 반환(계약은 plain 반환 타입 — DRPCGEN003), 제약 있는 타입 파라미터(DRPCGEN009). 제네릭 메서드는 [GenericProcedure] 선언 슬롯으로 지원(F12) — 미선언 타입 인자는 DRPCGEN007/008/009·런타임 백스톱.
+미지원: `ref/out` 매개변수, 사전류, `Task`/`Task<T>` 반환(계약은 plain 반환 타입 — DRPCGEN003), 제약 있는 타입 파라미터(DRPCGEN009), **표시 속성 없는 `IMessageSerializable<T>` 구현 타입(엄격 규칙 — `[Message]`/`[GenericMessage]` 필수)**. 제네릭 메서드는 [GenericProcedure] 선언 슬롯으로 지원(F12) — 미선언 타입 인자는 DRPCGEN007/008/009·런타임 백스톱.
+타입 검증은 **선언부 우선** — 계약을 선언한 어셈블리에서 `[RemoteProcedure]` 메서드 단위로 바로 돈다(허브 불필요, 메서드 위치에 진단). 허브 프로젝트 측 검증은 메타데이터로 들어온 선언의 안전망(허브 위치 진단). 검증 실패 시 생성기는 정의 선언만 담은 스켈레톤을 배출해 사용자 partial 구현이 고아(CS0759 벽)가 되지 않는다. 계약 프로젝트가 `DRPC.CodeGenerator` 를 애널라이저로 참조해야 선언부 검증이 돈다(Sandbox.Contracts 참조).
 
 ## 수명
 

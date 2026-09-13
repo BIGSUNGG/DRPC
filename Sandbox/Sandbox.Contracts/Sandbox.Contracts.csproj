@@ -13,6 +13,11 @@
     <PackageReference Include="MessageProtocol" Version="$(MessageProtocolPackageVersion)" />
     <ProjectReference Include="..\..\Source\DRPC.Attribute\DRPC.Attribute.csproj" />
     <ProjectReference Include="..\..\Source\DRPC.Shared\DRPC.Shared.csproj" />
+    <!-- 선언부 타입 검증(DRPCGEN003): [RemoteProcedure] 매개변수·반환 검사는 허브 유무와 무관하게
+         계약을 선언한 이 프로젝트에서 바로 돈다. 스텁 생성은 허브 프로젝트(Server/Client)가 담당한다. -->
+    <ProjectReference Include="..\..\Source\DRPC.CodeGenerator\DRPC.CodeGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

@@ -12,7 +12,7 @@ updated: 2026-09-14
 
 ## 현 상태 (2026-09-09)
 
-- **재구축 F1–F9·F11·F12·F13·F14 구현 완료.** `Source/` 5개 패키지(Attribute·Shared·CodeGenerator·Client·Server), `Sandbox/` 3개, `Test/` 3계층(140개 통과) + 벤치마크 1(DRPC.Benchmarks, [[../03-Reference/Performance|Performance]] 기준선).
+- **재구축 F1–F9·F11·F12·F13·F14 구현 완료.** `Source/` 5개 패키지(Attribute·Shared·CodeGenerator·Client·Server), `Sandbox/` 3개, `Test/` 3계층(144개 통과) + 벤치마크 1(DRPC.Benchmarks, [[../03-Reference/Performance|Performance]] 기준선).
 - 형제 스택은 **NuGet 안정판만** 참조한다(`MessageProtocol` **3.1.0**(2026-09-14 채택 — KI-43 충돌 판정 게이트 완결·`MessageProtocol` 단일 설치로 CodeGenerator nuspec 의존성 전파, 와이어·공개 API 무변화), `Communication.Network.RUDP.*`·`Communication.Shared` **2.7.0**(2026-09-14 채택 — RUDP TLS TargetHost 이름 전용 매칭 옵트인 전환[`RpcEndpointOptions.TlsAllowNameOnlyCertificateMatch` 신설, fail-closed·옵트인 시 만료 인증서 거부] + 2.6.0 DTLS 송신 풀링·세마포어 폐기·폴링 백오프·TCP null-host 검증 통일 포함) — CRC32c 무결성·흐름제어·프레임 상한·ConnectTimeout·끊김 래치 재생 + **DTLS 1.2 패킷 암호화(F13)** 포함) — 형제 저장소 프로젝트 참조·하드 경로 없음.
 - 저장소 루트 솔루션은 `DRPC.slnx`.
 - 빌드·테스트는 **`-c Release`** 를 쓴다. `Debug` 는 언어 서버가 생성기 DLL 을 점유해 복사가 실패할 수 있다([[../06-Troubleshooting/Known-Issues|Known-Issues]]).

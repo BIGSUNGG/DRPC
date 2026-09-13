@@ -191,7 +191,7 @@ public partial class GameClientHub : ClientHub<IGameServerProcedures, IGameClien
 | ---- | -------- | ------ |
 | DRPCGEN001 | error | 허브 클래스가 `partial` 이 아님 |
 | DRPCGEN002 | error | `ClientHub<,>`/`ServerHub<,>` 를 상속하지 않음(또는 형식 인자가 계약 아님) |
-| DRPCGEN003 | error | 지원 안 되는 타입·`ref/out`·제네릭 메서드·`Task` 반환·중복 메서드명(오버로드) |
+| DRPCGEN003 | error | 지원 안 되는 타입·`ref/out`·제네릭 메서드·`Task` 반환·중복 메서드명(오버로드). **선언부 발동**: 허브 유무와 무관하게 계약을 선언한 어셈블리에서 매개변수·반환 검증(메서드 위치 진단). **엄격 규칙**: `[Message]`/`[GenericMessage]` 표시 속성이 없는 `IMessageSerializable<T>` 구현 타입도 거부. **스켈레톤**: 검증 실패 시에도 `_Implementation`/`_Validate` 정의 선언만 배출해 CS0759 후속 에러 벽 방지 |
 | DRPCGEN005 | error | 한 계약 안에서 MethodId 중복(명시 중복·이름 해시 충돌 포함) |
 | DRPCGEN006 | error | `OneWay = true` 인데 반환이 void 가 아님 |
 
@@ -199,7 +199,7 @@ public partial class GameClientHub : ClientHub<IGameServerProcedures, IGameClien
 
 ```powershell
 dotnet build DRPC.slnx -c Release        # 5 라이브러리 + Sandbox 3 + Test 3
-dotnet test  DRPC.slnx -c Release        # 140개 통과 (49 생성기 / 52 단위 / 39 E2E RUDP 루프백)
+dotnet test  DRPC.slnx -c Release        # 144개 통과 (52 생성기 / 52 단위 / 40 E2E RUDP 루프백)
 ```
 
 `Debug` 로 CLI 빌드하면 Roslyn 언어 서버가 `DRPC.CodeGenerator.dll`(bin/Debug) 을 점유해 복사가 실패할 수 있다 —

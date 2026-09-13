@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using DRPC.CodeGenerator.Metadata;
 using DRPC.CodeGenerator.Reference;
 
 namespace DRPC.CodeGenerator;
@@ -30,6 +31,33 @@ public sealed class RpcIncrementalGenerator : IIncrementalGenerator
                     && inv.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: { } methodName }
                     && methodName.EndsWith("Async", System.StringComparison.Ordinal),
                 static (ctx, _) => (InvocationExpressionSyntax)ctx.Node);
+
+        // 선언부 타입 검증(DRPCGEN003): [RemoteProcedure] 메서드는 허브 유무와 무관하게
+        // 선언한 어셈블리에서 매개변수·반환 타입 검증을 받는다 — 메서드 선언 위치에 바로 진단이 뜬다.
+        IncrementalValuesProvider<MethodDeclarationSyntax> rpcDeclarations =
+            context.SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) => node is MethodDeclarationSyntax { AttributeLists.Count: > 0 },
+                static (ctx, _) => (MethodDeclarationSyntax)ctx.Node);
+
+        context.RegisterSourceOutput(rpcDeclarations.Combine(context.CompilationProvider), static (spc, pair) =>
+        {
+            var (syntax, compilation) = pair;
+            SemanticModel semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+            if (semanticModel.GetDeclaredSymbol(syntax) is not IMethodSymbol method)
+            {
+                return;
+            }
+
+            var references = new AttributeReferences(compilation);
+            if (references.RemoteProcedureAttributeType == null ||
+                !method.HasAttribute(references.RemoteProcedureAttributeType))
+            {
+                return; // [RemoteProcedure] 가 붙지 않은 메서드 — 대상 아님.
+            }
+
+            RpcHubSourceGenerator.CheckPayloadTypes(new MethodMetadata(method, references), references,
+                spc.ReportDiagnostic, syntax.Identifier.GetLocation());
+        });
 
         context.RegisterSourceOutput(stubCalls.Combine(context.CompilationProvider), static (spc, pair) =>
         {

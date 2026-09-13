@@ -16,7 +16,6 @@ internal sealed class AttributeReferences
     public const string ServerHubTypeName = "DRPC.Server.Network.ServerHub";
     public const string ServerDeclarationsTypeName = "DRPC.Shared.Interface.IServerProcedureDeclarations";
     public const string ClientDeclarationsTypeName = "DRPC.Shared.Interface.IClientProcedureDeclarations";
-    public const string MessageSerializableTypeName = "MessageProtocol.Serialize.IMessageSerializable";
 
     /// <summary>MessageProtocol 의 메시지 표시 속성류 ([Message(MessageKind, …)], Generic).</summary>
     public const string MessageNamespace = "MessageProtocol";
@@ -27,14 +26,12 @@ internal sealed class AttributeReferences
     public INamedTypeSymbol? RemoteProcedureAttributeType { get; }
     public INamedTypeSymbol? GenericProcedureAttributeType { get; }
     public INamedTypeSymbol? RpcDeliveryModeType { get; }
-    public INamedTypeSymbol? MessageSerializableType { get; }
 
     public AttributeReferences(Compilation compilation)
     {
         RemoteProcedureAttributeType = compilation.GetTypeByMetadataName(RemoteProcedureTypeName);
         GenericProcedureAttributeType = compilation.GetTypeByMetadataName(GenericProcedureTypeName);
         RpcDeliveryModeType = compilation.GetTypeByMetadataName(RpcDeliveryModeTypeName);
-        MessageSerializableType = compilation.GetTypeByMetadataName(MessageSerializableTypeName + "`1");
     }
 
     public bool IsGenericProcedureAttribute(INamedTypeSymbol? attributeClass)
@@ -116,11 +113,6 @@ internal sealed class AttributeReferences
             }
         }
 
-        if (style == MessageStyle.None && ImplementsMessageSerializable(type))
-        {
-            return MessageStyle.NonId;
-        }
-
         return style;
     }
 
@@ -150,23 +142,6 @@ internal sealed class AttributeReferences
         return false;
     }
 
-    public bool ImplementsMessageSerializable(ITypeSymbol type)
-    {
-        if (MessageSerializableType == null)
-        {
-            return false;
-        }
-
-        foreach (var iface in type.AllInterfaces)
-        {
-            if (SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, MessageSerializableType))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }
 
 /// <summary>메시지 타입의 페이로드 기록 방식 구분.</summary>
@@ -175,7 +150,7 @@ internal enum MessageStyle
     /// <summary>MessageProtocol 메시지가 아님.</summary>
     None,
 
-    /// <summary><c>[Message(MessageKind.NonId)]</c>(또는 타입 고정 직렬화) — 생성된 정적 Serialize/Deserialize 로 왕복한다.</summary>
+    /// <summary><c>[Message(MessageKind.NonId)]</c> — 생성된 정적 Serialize/Deserialize 로 왕복한다. 표시 속성이 없으면 NonId 로 인정하지 않는다(엄격 규칙).</summary>
     NonId,
 
     /// <summary>Standalone/Group/Generic — 헤더의 ID 로 라우팅하므로 object dispatch 가 가능하다(그룹 다형성 유지).</summary>

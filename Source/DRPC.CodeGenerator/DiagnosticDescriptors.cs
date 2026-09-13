@@ -25,7 +25,7 @@ internal static class DiagnosticDescriptors
     public static readonly DiagnosticDescriptor UnsupportedType = new(
         id: "DRPCGEN003",
         title: "DRPC contract type not supported",
-        messageFormat: "Method '{0}' uses unsupported type '{1}'. Use primitives, string, enums, nullable primitives, byte[], arrays/List<T> of those, or a MessageProtocol message type. Reason: {2}.",
+        messageFormat: "Method '{0}' uses unsupported type '{1}'. Use primitives, string, enums, nullable primitives, byte[], arrays/List<T> of those, or a [Message]-attributed MessageProtocol type. Reason: {2}.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

@@ -463,4 +463,71 @@ public class RpcHubGeneratorTests
         Assert.True(result.HasDiagnostic("DRPCGEN011"));
         Assert.Contains("await SendRPC(4, __payload, global::DRPC.RpcDeliveryMode.ReliableOrdered)", result.GeneratedSource);
     }
+
+    [Fact]
+    public void DRPCGEN003_fires_in_declaration_assembly_without_hub()
+    {
+        // 허브 없이 계약만 있어도 선언부에서 타입 검증이 돈다 — 계약 어셈블리 단독 빌드도 걸린다.
+        var result = GeneratorHarness.Run("""
+            using DRPC;
+            using DRPC.Shared.Interface;
+
+            public interface ITestServerProcedures : IServerProcedureDeclarations
+            {
+                [RemoteProcedure(0)]
+                int Join(Untagged player);
+            }
+
+            public class Untagged { public int Id { get; set; } }
+            """);
+
+        Diagnostic_AssertIds(result, "DRPCGEN003");
+        // 메서드 선언 위치에 찍힌다 — 위치 없는 베어 CSC 에러가 아니다.
+        Assert.True(result.WithId("DRPCGEN003").Single().Location.IsInSource);
+        Assert.Contains("Join", result.WithId("DRPCGEN003").Single().GetMessage());
+    }
+
+    [Fact]
+    public void DRPCGEN003_when_type_implements_message_serializable_without_attribute()
+    {
+        // 엄격 규칙: IMessageSerializable<T> 구현만으로는 부족 — [Message] 표시 속성이 있어야 한다.
+        var result = GeneratorHarness.Run("""
+            using DRPC;
+            using DRPC.Shared.Interface;
+            using MessageProtocol.Serialize;
+
+            public interface ITestServerProcedures : IServerProcedureDeclarations
+            {
+                [RemoteProcedure(0)]
+                void Send(ManualMessage message);
+            }
+
+            public class ManualMessage : IMessageSerializable<ManualMessage>
+            {
+            }
+            """);
+
+        Diagnostic_AssertIds(result, "DRPCGEN003");
+    }
+
+    [Fact]
+    public void validation_failure_emits_skeleton_so_no_CS0759_wall()
+    {
+        // 검증 실패 시 정의 선언만 담은 스켈레톤이 나와 사용자 partial 구현이 고아가 되지 않는다.
+        var result = GeneratorHarness.Run(GeneratorHarness.ServerHub(
+            "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 1)] int Join(Untagged player);",
+            hubBody: """
+                private partial global::System.Threading.Tasks.Task<int> Join_Implementation(Untagged player)
+                    => global::System.Threading.Tasks.Task.FromResult(0);
+                """) + """
+
+            public class Untagged { public int Id { get; set; } }
+            """);
+
+        Diagnostic_AssertIds(result, "DRPCGEN003");
+        // 스켈레톤: 사용자 구현이 붙을 정의 선언이 존재한다.
+        Assert.Contains("Join_Implementation", result.GeneratedSource);
+        // 후속 컴파일 에러(CS0759 벽) 없음 — DRPCGEN003 이 유일한 에러다.
+        Assert.Empty(result.CompileErrors());
+    }
 }

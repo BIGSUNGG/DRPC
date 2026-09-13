@@ -34,10 +34,8 @@ internal static class Extensions
         return null;
     }
 
-    /// <summary>
-    /// 페이로드에 넣을 수 있는 메시지 타입인지. MessageProtocol 속성 또는 생성된
-    /// <c>IMessageSerializable&lt;T&gt;</c> 구현 중 하나면 충분하다.
-    /// </summary>
+    /// <summary>페이로드에 넣을 수 있는 메시지 타입인지. MessageProtocol 표시 속성([Message]/[GenericMessage])이
+    /// 반드시 붙어 있어야 한다 — 속성 없는 IMessageSerializable 구현만으로는 통과하지 않는다(엄격 규칙).</summary>
     public static bool IsMessage(this ITypeSymbol self, AttributeReferences references)
         => references.MessageStyleOf(self) != MessageStyle.None;
 }

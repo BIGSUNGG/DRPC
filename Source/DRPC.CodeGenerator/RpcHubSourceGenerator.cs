@@ -47,16 +47,19 @@ internal static class RpcHubSourceGenerator
         var client = new DeclarationsMetadata(clientDeclarations!, references);
         var model = new TypeMetadata(hubSymbol, server, client, networkKind);
 
-        if (!Validate(model.ServerDeclarations, references, report) || !Validate(model.ClientDeclarations, references, report))
+        if (!Validate(model.ServerDeclarations, references, report, fallbackLocation) ||
+            !Validate(model.ClientDeclarations, references, report, fallbackLocation))
         {
-            return null;
+            // 검증 실패 시에도 사용자 partial 구현이 고아가 되지 않게 정의 선언만 배출한다(CS0759 벽 방지).
+            // 빌드 실패 자체는 이미 보고된 진단이 담당한다.
+            return Emitter.RpcHubEmitter.EmitSkeleton(model);
         }
 
         return Emitter.RpcHubEmitter.Emit(model);
     }
 
     static bool Validate(DeclarationsMetadata declarations, AttributeReferences references,
-        System.Action<Diagnostic> report)
+        System.Action<Diagnostic> report, Location fallbackLocation)
     {
         var methodIds = new HashSet<int>();
         var methodNames = new HashSet<string>();
@@ -64,7 +67,8 @@ internal static class RpcHubSourceGenerator
         foreach (MethodMetadata method in declarations.Methods)
         {
             IMethodSymbol symbol = method.Symbol;
-            Location location = symbol.Locations.FirstOrDefault() ?? Location.None;
+            // 메타데이터(다른 어셈블리)에서 온 선언은 위치가 없다 — 허브 클래스 위치로 잡아 클릭 가능하게 한다.
+            Location location = symbol.Locations.FirstOrDefault(static l => l.IsInSource) ?? fallbackLocation;
 
             if (!methodIds.Add(method.MethodId))
             {
@@ -121,34 +125,6 @@ internal static class RpcHubSourceGenerator
                         location, symbol.Name, genericError));
                     return false;
                 }
-
-                // 구성별 치환된 시그니처가 페이로드로 쓸 수 있는지 검증(미선언 타입 파라미터 사용 등은 여기서 들통난다).
-                foreach (IMethodSymbol closed in method.Generic!.ClosedMethods)
-                {
-                    foreach (IParameterSymbol parameter in closed.Parameters)
-                    {
-                        if (parameter.RefKind != RefKind.None)
-                        {
-                            report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, symbol.Name,
-                                parameter.Type.ToDisplayString(), "ref/in/out parameter"));
-                            return false;
-                        }
-
-                        if (!RpcPayload.IsSupported(parameter.Type, references, out _))
-                        {
-                            report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, symbol.Name,
-                                parameter.Type.ToDisplayString(), UnsupportedReason(parameter.Type)));
-                            return false;
-                        }
-                    }
-
-                    if (!RpcPayload.IsSupported(closed.ReturnType, references, allowVoid: true, out _))
-                    {
-                        report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, symbol.Name,
-                            closed.ReturnType.ToDisplayString(), UnsupportedReason(closed.ReturnType)));
-                        return false;
-                    }
-                }
             }
             else if (method.Symbol.GetAttributes().Any(static a =>
                          a.AttributeClass?.ContainingNamespace?.ToDisplayString() == "DRPC" &&
@@ -159,31 +135,52 @@ internal static class RpcHubSourceGenerator
                 return false;
             }
 
-            if (!method.IsGeneric)
+            // 타입 검증: 소스에 선언된 메서드는 선언부 프로바이더가 같은 컴파일레이션에서 이미 진단한다(중복 보고 방지).
+            // 메타데이터로 들어온 선언만 허브 쪽 안전망이 직접 진단한다. 어느 쪽이든 검사 자체는
+            // 항상 돌아야 한다 — 통과시키면 이미터가 지원 밖 타입에서 쓰러진다(CS8785).
+            bool declaredInSource = symbol.Locations.Any(static l => l.IsInSource);
+            if (!CheckPayloadTypes(method, references, declaredInSource ? NoReport : report, location))
             {
-                foreach (IParameterSymbol parameter in symbol.Parameters)
-                {
-                    if (parameter.RefKind != RefKind.None)
-                    {
-                        report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, symbol.Name,
-                            parameter.Type.ToDisplayString(), "ref/in/out parameter"));
-                        return false;
-                    }
+                return false;
+            }
+        }
 
-                    if (!RpcPayload.IsSupported(parameter.Type, references, out _))
-                    {
-                        report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, symbol.Name,
-                            parameter.Type.ToDisplayString(), UnsupportedReason(parameter.Type)));
-                        return false;
-                    }
-                }
+        return true;
+    }
 
-                if (!RpcPayload.IsSupported(symbol.ReturnType, references, allowVoid: true, out _))
+    /// <summary>진단 없이 검증 결과만 보는 보고 싱크(중복 보고 방지용).</summary>
+    static readonly System.Action<Diagnostic> NoReport = static _ => { };
+
+    /// <summary>[RemoteProcedure] 메서드의 매개변수·반환 타입이 페이로드로 직렬화 가능한지 검증(DRPCGEN003).
+    /// 선언부 프로바이더(허브 없이)와 허브 쪽 안전망이 공유한다. 제네릭은 닫힌 구성별로 검사한다.</summary>
+    internal static bool CheckPayloadTypes(MethodMetadata method, AttributeReferences references,
+        System.Action<Diagnostic> report, Location location)
+    {
+        IEnumerable<IMethodSymbol> signatures = method.IsGeneric ? method.Generic!.ClosedMethods : new[] { method.Symbol };
+        foreach (IMethodSymbol signature in signatures)
+        {
+            foreach (IParameterSymbol parameter in signature.Parameters)
+            {
+                if (parameter.RefKind != RefKind.None)
                 {
-                    report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, symbol.Name,
-                        symbol.ReturnType.ToDisplayString(), UnsupportedReason(symbol.ReturnType)));
+                    report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, method.MethodName,
+                        parameter.Type.ToDisplayString(), "ref/in/out parameter"));
                     return false;
                 }
+
+                if (!RpcPayload.IsSupported(parameter.Type, references, out _))
+                {
+                    report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, method.MethodName,
+                        parameter.Type.ToDisplayString(), UnsupportedReason(parameter.Type)));
+                    return false;
+                }
+            }
+
+            if (!RpcPayload.IsSupported(signature.ReturnType, references, allowVoid: true, out _))
+            {
+                report(Diagnostic.Create(DiagnosticDescriptors.UnsupportedType, location, method.MethodName,
+                    signature.ReturnType.ToDisplayString(), UnsupportedReason(signature.ReturnType)));
+                return false;
             }
         }
 
