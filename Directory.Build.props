@@ -26,7 +26,7 @@
 
 
 
-    <MessageProtocolPackageVersion>3.1.0</MessageProtocolPackageVersion>
+    <MessageProtocolPackageVersion>3.2.1</MessageProtocolPackageVersion>
 
 
 
@@ -34,7 +34,7 @@
 
 
 
-    <CommunicationPackageVersion>2.7.0</CommunicationPackageVersion>
+    <CommunicationPackageVersion>2.7.1</CommunicationPackageVersion>
 
 
 

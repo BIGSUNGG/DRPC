@@ -8,6 +8,11 @@ updated: 2026-09-22
 
 # Changelog
 
+## 2026-09-22 — v3.6.0 (release)
+
+- **형제 스택 최신 채택(minor)** — `MessageProtocol` 3.1.0 → **3.2.1**, `Communication.Network.RUDP.*`·`Communication.Shared` 2.7.0 → **2.7.1**. 마이그레이션 불필요 — DRPC 소스 무변화(버전 프로퍼티 2줄만 변경), 빌드 오류 0·144 테스트(52/52/40)·RUDP 와이어 E2E 전부 통과로 호환 확인. nuspec 의존성 버전은 패키지 참조에서 자동 전파.
+- 버전 3.5.1 → 3.6.0 범프(전 5패키지). 태그 v3.6.0 푸시 → NuGet Publish 워크플로 5패키지 게시.
+
 ## 2026-09-22 — v3.5.1 (release)
 
 - **주석 영어화 릴리스(patch)** — 활성 코드 52개 .cs 파일 주석 전면 영어화·공개 API XML doc 전수(61개 public 선언)·한글 예외 메시지 영어화. 런타임 API·와이어 무변화, 사용자 가시 변경은 예외 메시지 텍스트뿐. 리뷰 게이트 review-until-clean 2라운드 통과(1: ISSUES 5건 → 수정, 2: CLEAN).
