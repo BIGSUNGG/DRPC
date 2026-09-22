@@ -6,9 +6,11 @@ using DRPC.CodeGenerator.Metadata;
 namespace DRPC.CodeGenerator.Emitter;
 
 /// <summary>
-/// 제네릭 프로시저 방출. 페이로드 첫 4바이트 = 구성 인덱스([GenericProcedure] 데카르트 곱 순서).
-/// 스텁은 typeof(T) 체인으로 구성을 골라 닫힌 헬퍼에 캐스팅해 넘긴다 — 선언 밖 타입 인자는
-/// 마지막 throw(런타임 백스톱), 호출 지점은 DRPCGEN008 분석기가 컴파일 타임에 잡는다.
+/// Generic procedure emission. The first 4 bytes of the payload = instantiation index
+/// (the [GenericProcedure] Cartesian-product order). Stubs pick an instantiation via a
+/// typeof(T) chain and cast into the closed helper; undeclared type arguments fall through to
+/// a final throw (runtime backstop), while call sites are caught at compile time by the
+/// DRPCGEN008 analyzer.
 /// </summary>
 internal static partial class RpcHubEmitter
 {
@@ -18,7 +20,7 @@ internal static partial class RpcHubEmitter
     static string ClosedTypeArgumentList(ITypeSymbol[] instantiation)
         => string.Join(", ", instantiation.Select(static t => t.ToDisplayString(RpcPayload.Qualified)));
 
-    /// <summary>스텁 인자 → 닫힌 타입 인자로의 캐스팅. 타입 파라미터가 안 쓰인 매개변수는 그대로 통과.</summary>
+    /// <summary>Casts a stub argument to the closed type argument. Parameters that do not use the type parameter pass through unchanged.</summary>
     static string CastArgument(ITypeSymbol original, ITypeSymbol closed, string name)
         => Microsoft.CodeAnalysis.SymbolEqualityComparer.Default.Equals(original, closed)
             ? name
@@ -32,7 +34,8 @@ internal static partial class RpcHubEmitter
             ? "global::System.Threading.Tasks.Task"
             : $"global::System.Threading.Tasks.Task<{method.ReturnTypeDisplay}>";
 
-        // 왕복 호출은 호출자 취소를 받는다(맨 끝 선택 매개변수). one-way 송신은 대기가 없어 제외한다.
+        // Round-trip calls take a caller cancellation token (optional last parameter).
+        // One-way sends have no wait, so they omit it.
         string ctParam = method.OneWay ? "" : CancellationTokenParam(method);
 
         sb.AppendLine($"{indent}public async {asyncReturn} {method.MethodName}Async{typeParams}({method.ParameterDeclarationList()}{ctParam})");
@@ -138,7 +141,7 @@ internal static partial class RpcHubEmitter
         EmitValidateDeclaration(sb, method, indent);
     }
 
-    /// <summary>구성별 닫힌 페이로드 헬퍼. WriteParams/ReadParams 는 구성 인덱스를 포함한다(송수신 대칭).</summary>
+    /// <summary>Closed payload helpers per instantiation. WriteParams/ReadParams embed the instantiation index (send/receive symmetry).</summary>
     static void EmitGenericPayloadHelpers(StringBuilder sb, MethodMetadata method, string indent)
     {
         GenericMethodMetadata generic = method.Generic!;

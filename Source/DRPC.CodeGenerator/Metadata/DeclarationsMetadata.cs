@@ -5,12 +5,15 @@ using DRPC.CodeGenerator.Reference;
 
 namespace DRPC.CodeGenerator.Metadata;
 
-/// <summary>계약 인터페이스(IServerProcedureDeclarations / IClientProcedureDeclarations)와 그 RPC 메서드 목록.</summary>
+/// <summary>A contract interface (IServerProcedureDeclarations / IClientProcedureDeclarations) and its RPC methods.</summary>
 internal sealed class DeclarationsMetadata
 {
+    /// <summary>The contract interface symbol.</summary>
     public INamedTypeSymbol Symbol { get; }
+    /// <summary>The [RemoteProcedure] methods declared on the interface, in declaration order.</summary>
     public MethodMetadata[] Methods { get; }
 
+    /// <summary>Collects the [RemoteProcedure] methods from the interface.</summary>
     public DeclarationsMetadata(INamedTypeSymbol declarationSymbol, AttributeReferences references)
     {
         Symbol = declarationSymbol;

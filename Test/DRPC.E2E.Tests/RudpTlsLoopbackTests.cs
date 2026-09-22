@@ -11,9 +11,9 @@ using Xunit;
 namespace DRPC.E2E.Tests;
 
 /// <summary>
-/// DRPC 옵션 표면(<see cref="RpcEndpointOptions"/>) 위의 DTLS 1.2 암호화 경로 — 핀닝·TargetHost 검증 왕복,
-/// 핀 불일치·검증 수단 없음 거부(fail-closed), 평문 클라이언트 와이어 비호환.
-/// 인증서 생성은 Communication RudpTlsTests 패턴(PFX 재수입)을 따른다.
+/// The DTLS 1.2 encryption path over the DRPC options surface (<see cref="RpcEndpointOptions"/>): pinning and TargetHost verification roundtrips,
+/// rejection of pin mismatch and missing validation means (fail-closed), and plaintext-client wire incompatibility.
+/// Certificate creation follows the Communication RudpTlsTests pattern (PFX re-import).
 /// </summary>
 public class RudpTlsLoopbackTests
 {
@@ -21,7 +21,7 @@ public class RudpTlsLoopbackTests
 
     static int NextPort()
     {
-        // RudpLoopbackTests 와 동일 — 고정 포트는 예약 범위·잔여 리스너와 충돌해 플레이크를 일으킨다.
+        // Same as RudpLoopbackTests — fixed ports collide with reserved ranges and leftover listeners, causing flakes (ephemeral ports).
         using var probe = new System.Net.Sockets.UdpClient(0);
         return ((System.Net.IPEndPoint)probe.Client.LocalEndPoint!).Port;
     }
@@ -34,7 +34,7 @@ public class RudpTlsLoopbackTests
             new OidCollection { new("1.3.6.1.5.5.7.3.1") }, critical: false));
         using X509Certificate2 ephemeral = request.CreateSelfSigned(
             DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddMinutes(30));
-        // 플랫폼 키 저장소와 무관하게 소유 키가 동작하도록 PFX 로 재수입한다.
+        // Re-import as PFX so the private key works regardless of the platform key store.
         return new X509Certificate2(
             ephemeral.Export(X509ContentType.Pfx),
             (string?)null,
@@ -83,8 +83,8 @@ public class RudpTlsLoopbackTests
         {
             ConnectionKey = Key,
             ConnectTimeoutMs = 5000,
-            TlsTargetHost = "localhost", // 접속 주소(127.0.0.1)가 아니라 인증서 CN/SAN 과 일치하면 된다.
-            TlsAllowNameOnlyCertificateMatch = true, // Communication 2.7.0 — 이름 전용 매칭은 옵트인제
+            TlsTargetHost = "localhost", // must match the certificate CN/SAN, not the connect address (127.0.0.1).
+            TlsAllowNameOnlyCertificateMatch = true, // Communication 2.7.0 — name-only matching is opt-in
         };
         using var client = await RpcClient.ConnectWithOptionsAsync("127.0.0.1", port, clientOptions,
             channel => new E2EClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub)));
@@ -102,7 +102,7 @@ public class RudpTlsLoopbackTests
         var serverOptions = new RpcEndpointOptions { ConnectionKey = Key, ServerCertificate = certificate };
         await using var handle = await ListenTls(port, serverOptions);
 
-        // Communication 2.7.0 — TlsTargetHost 만으로는 이름 전용 매칭이 거부된다(옵트인 미설정, fail-closed).
+        // Communication 2.7.0 — TlsTargetHost alone is rejected for name-only matching (no opt-in, fail-closed).
         var clientOptions = new RpcEndpointOptions
         {
             ConnectionKey = Key,
@@ -123,7 +123,7 @@ public class RudpTlsLoopbackTests
         var serverOptions = new RpcEndpointOptions { ConnectionKey = Key, ServerCertificate = certificate };
         await using var handle = await ListenTls(port, serverOptions);
 
-        // 핀 불일치 — 핸드셰이크 중 즉시 거부돼 연결 실패로 확정된다(ConnectTimeout 소진이 아니다).
+        // Pin mismatch — rejected immediately during the handshake, surfacing as a connection failure (not ConnectTimeout exhaustion).
         var clientOptions = new RpcEndpointOptions
         {
             ConnectionKey = Key,
@@ -144,8 +144,8 @@ public class RudpTlsLoopbackTests
         var serverOptions = new RpcEndpointOptions { ConnectionKey = Key, ServerCertificate = certificate };
         await using var handle = await ListenTls(port, serverOptions);
 
-        // 서버 옵션을 그대로 클라이언트에 복사하는 전형적 실수 — TLS 는 켜졌지만 검증 수단(TargetHost·핀)이 없으면
-        // 서버 인증서는 기본 거부된다(fail-closed).
+        // The classic mistake of copying the server options to the client — with TLS on but no validation means (TargetHost or pin),
+        // the server certificate is rejected by default (fail-closed).
         var clientOptions = new RpcEndpointOptions
         {
             ConnectionKey = Key,
@@ -166,8 +166,8 @@ public class RudpTlsLoopbackTests
         var serverOptions = new RpcEndpointOptions { ConnectionKey = Key, ServerCertificate = certificate };
         await using var handle = await ListenTls(port, serverOptions);
 
-        // 와이어 비호환 — 평문 클라이언트는 RUDP 레벨 연결까진 성공하지만 서버의 DTLS 게이트를 통과하지 못해
-        // 어떤 RPC 도 완료되지 않는다.
+        // Wire incompatibility — the plaintext client gets as far as the RUDP-level connection but never passes the server's DTLS gate,
+        // so no RPC ever completes.
         var plainOptions = new RpcEndpointOptions { ConnectionKey = Key, ConnectTimeoutMs = 5000 };
         using var plain = await RpcClient.ConnectWithOptionsAsync("127.0.0.1", port, plainOptions,
             channel => new E2EClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub)));
@@ -180,7 +180,7 @@ public class RudpTlsLoopbackTests
     {
         if (await Task.WhenAny(task, Task.Delay(timeoutMs)).ConfigureAwait(false) != task)
         {
-            throw new TimeoutException($"주어진 시간({timeoutMs}ms) 내에 완료되지 않았습니다.");
+            throw new TimeoutException($"The task did not complete within {timeoutMs}ms.");
         }
 
         return await task.ConfigureAwait(false);

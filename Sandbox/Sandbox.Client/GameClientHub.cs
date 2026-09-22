@@ -4,8 +4,8 @@ using Sandbox.Contracts;
 namespace Sandbox.Client;
 
 /// <summary>
-/// 클라이언트 측 허브. 서버 계약(<see cref="IGameServerProcedures"/>)은 <c>*Async</c> 로 호출하고,
-/// 클라이언트 계약(<see cref="IGameClientProcedures"/>)은 <c>*_Implementation</c> partial 로 구현한다.
+/// Client-side hub. Server contracts (<see cref="IGameServerProcedures"/>) are called through the generated <c>*Async</c> stubs,
+/// while client contracts (<see cref="IGameClientProcedures"/>) are implemented as <c>*_Implementation</c> partials.
 /// </summary>
 public partial class GameClientHub : ClientHub<IGameServerProcedures, IGameClientProcedures>
 {

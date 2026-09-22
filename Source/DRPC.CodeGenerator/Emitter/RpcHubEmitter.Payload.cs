@@ -5,14 +5,15 @@ using DRPC.CodeGenerator.Metadata;
 namespace DRPC.CodeGenerator.Emitter;
 
 /// <summary>
-/// 페이로드 헬퍼 렌더링. 매개변수와 반환 값을 MessageBufferWriter/Reader 로 이어 붙인다.
+/// Payload helper rendering. Concatenates parameters and return values through
+/// MessageBufferWriter/Reader.
 /// </summary>
 internal static partial class RpcHubEmitter
 {
     const string BufferCreate = "global::MessageProtocol.Serialize.MessageBufferWriter.Create(64)";
     const string ReaderCtor = "new global::MessageProtocol.Serialize.MessageBufferReader(__data)";
 
-    /// <summary>호출부에서 쓰는 인라인 페이로드 쓰기. 매개변수가 없으면 빈 배열.</summary>
+    /// <summary>Inline payload write at the call site. Emits an empty array when there are no parameters.</summary>
     static void EmitPayloadWrite(StringBuilder sb, string indent, MethodMetadata method, string arguments, string target)
     {
         if (method.Parameters.Length == 0)
@@ -24,7 +25,7 @@ internal static partial class RpcHubEmitter
         sb.AppendLine($"{indent}byte[] {target} = {WriteParams(method)}({arguments});");
     }
 
-    /// <summary>메서드 하나분 페이로드 헬퍼(매개변수 쓰/읽기, 반환 쓰/읽기).</summary>
+    /// <summary>Payload helpers for one method (parameter write/read, return write/read).</summary>
     static void EmitPayloadHelpers(StringBuilder sb, MethodMetadata method, string indent)
     {
         if (method.Parameters.Length > 0)

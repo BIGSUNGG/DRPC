@@ -5,16 +5,16 @@ using Xunit;
 namespace DRPC.CodeGenerator.Tests;
 
 /// <summary>
-/// 생성기 진단(DRPCGEN001–011, 004 제외)과 생성 결과의 형태를 검사한다.
-/// 레거시 대비 확정 동작: Outgoing 은 <c>{Method}Async</c> 만 생성한다(sync [Obsolete] 스텁 없음).
+/// Generator diagnostics (DRPCGEN001–011, excluding 004) and the shape of the generated output.
+/// Behavior pinned against the legacy version: Outgoing generates only <c>{Method}Async</c> (no sync [Obsolete] stubs).
 /// </summary>
 public class RpcHubGeneratorTests
 {
     const string AddContract = "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 3)] int Add(int value1, int value2);";
 
     /// <summary>
-    /// 제너레이터와 동일한 FNV-1a 32비트. 암시 MethodId가 프로세스 랜덤(string.GetHashCode)이
-    /// 아니라는 와이어 계약을 테스트가 고정한다.
+    /// FNV-1a 32-bit, identical to the generator. The test pins the wire contract that implicit MethodIds
+    /// are not process-random (string.GetHashCode).
     /// </summary>
     static int NameHash(string text)
     {
@@ -45,7 +45,7 @@ public class RpcHubGeneratorTests
     [Fact]
     public void Omitted_mode_defaults_to_reliable_ordered()
     {
-        // 인자 없는 [RemoteProcedure] = 기본 ReliableOrdered. MethodId 는 이름 해시로 자동 할당.
+        // Bare [RemoteProcedure] = default ReliableOrdered. The MethodId is assigned automatically as a name hash.
         var result = GeneratorHarness.Run(GeneratorHarness.ClientHub("[RemoteProcedure] int A();"));
 
         Assert.Contains($"RequestRPC({NameHash("global::ITestServerProcedures.A()")}, __payload, global::DRPC.RpcDeliveryMode.ReliableOrdered, cancellationToken)", result.GeneratedSource);
@@ -76,7 +76,7 @@ public class RpcHubGeneratorTests
         var roundtrip = GeneratorHarness.Run(GeneratorHarness.ClientHub(
             "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 7)] int Q();"));
 
-        // 무득수 왕복 스텁은 앞 쉼표 없이 취소 토큰을 받는다.
+        // Zero-result roundtrip stubs take the cancellation token without a leading comma.
         Assert.Contains("QAsync(global::System.Threading.CancellationToken cancellationToken = default)", roundtrip.GeneratedSource);
 
         var oneWay = GeneratorHarness.Run(GeneratorHarness.ClientHub(
@@ -137,7 +137,7 @@ public class RpcHubGeneratorTests
     [Fact]
     public void Registration_is_seeded_only_from_incoming_contract()
     {
-        // 서버 허브: Incoming = 서버 계약. 클라이언트 계약은 outgoing 이므로 등록하지 않는다.
+        // Server hub: Incoming = server contract. Client contracts are outgoing, so they are not registered.
         var result = GeneratorHarness.Run(GeneratorHarness.ServerHub(
             "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 1)] int In();",
             "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 1)] int Out();"));
@@ -181,8 +181,8 @@ public class RpcHubGeneratorTests
     [Fact]
     public void Named_kind_argument_Message_attribute_is_recognized()
     {
-        // 3.0.0 [Message] 신문법 커버리지: kind 를 명명 인자(kind:)로 준 NonId 선언도
-        // 위치 인자와 동일하게 NonId 스타일(타입 고정 직렬화)로 인식해야 한다.
+        // 3.0.0 [Message] new-syntax coverage: a NonId declaration that passes kind as a named argument (kind:)
+        // must be recognized the same way as positional arguments — NonId style (type-fixed serialization).
         string source = GeneratorHarness.ClientHub(
                 "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 8)] void Send(Player player);")
             + """
@@ -247,7 +247,7 @@ public class RpcHubGeneratorTests
         Assert.Contains("if (__rd.ReadBoolean())", result.GeneratedSource);
     }
 
-    // ── 진단 ───────────────────────────────────────────────────────────
+    // ── Diagnostics ───────────────────────────────────────────────────────────
 
     [Fact]
     public void DRPCGEN001_when_hub_is_not_partial()
@@ -307,7 +307,7 @@ public class RpcHubGeneratorTests
         var result = GeneratorHarness.Run(GeneratorHarness.ClientHub(
             "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered)] int Implicit();"));
 
-        // 같은 식별자면 항상 같은 값 — string.GetHashCode(프로세스 랜덤)가 아니라는 고정.
+        // Same identifier always yields the same value — pins that this is not string.GetHashCode (process-random).
         Assert.DoesNotContain("RequestRPC(0,", result.GeneratedSource);
         Assert.Contains($"RequestRPC({NameHash("global::ITestServerProcedures.Implicit()")}, __payload", result.GeneratedSource);
     }
@@ -355,8 +355,8 @@ public class RpcHubGeneratorTests
     [Fact]
     public void Generated_hub_compiles_with_user_implementations()
     {
-        // 여긴 MessageProtocol 생성기를 같이 돌리지 않으니 메시지 타입은 쓰지 않는다.
-        // (DTO 왕복은 DRPC.E2E.Tests 의 RUDP 루프백이 실제 생성기와 함께 검증한다.)
+        // The MessageProtocol generator is not running here, so no message types are used.
+        // (DTO roundtrips are verified with the real generator by the RUDP loopback in DRPC.E2E.Tests.)
         string source = GeneratorHarness.ClientHub(
             """
             [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 3)] int Add(int value1, int value2);
@@ -385,7 +385,7 @@ public class RpcHubGeneratorTests
                 private partial Task<int> Add_Implementation(int value1, int value2) => Task.FromResult(value1 + value2);
                 """));
 
-        // 게이트는 구현 호출 앞에, 미구현 시 컴파일 에러(fail-closed)를 내는 partial 선언이 따라온다.
+        // The gate precedes the implementation call, followed by a partial declaration that fails compilation when unimplemented (fail-closed).
         Assert.Contains("if (!await Add_Validate(value1, value2).ConfigureAwait(false))", result.GeneratedSource);
         Assert.Contains("throw new global::DRPC.Shared.RpcValidationFailedException(\"Add\");", result.GeneratedSource);
         Assert.Contains("private partial global::System.Threading.Tasks.Task<bool> Add_Validate(global::System.Int32 value1, global::System.Int32 value2);", result.GeneratedSource);
@@ -395,7 +395,7 @@ public class RpcHubGeneratorTests
     [Fact]
     public void Validation_without_user_validate_partial_fails_to_compile()
     {
-        // 구현부가 없으면 partial 선언이 컴파일에서 사라져 호출 지점이 컴파일 에러로 실패한다(fail-closed).
+        // Without the implementation, the partial declaration disappears from compilation and the call site fails to compile (fail-closed).
         var result = GeneratorHarness.Run(GeneratorHarness.ServerHub(
             "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 3, Validation = true)] int Add(int value1, int value2);",
             hubBody: "private partial Task<int> Add_Implementation(int value1, int value2) => Task.FromResult(value1 + value2);"));
@@ -416,7 +416,7 @@ public class RpcHubGeneratorTests
     static void Diagnostic_AssertIds(GeneratorHarness.GeneratorResult result, string id)
     {
         Assert.Contains(id, result.Diagnostics.Select(static d => d.Id));
-        // 진단으로 중단된 허브는 스텁을 남기지 않는다.
+        // A hub halted by a diagnostic leaves no stubs behind.
         Assert.DoesNotContain("MethodCallActions.Add", result.GeneratedSource);
     }
     [Fact]
@@ -435,7 +435,7 @@ public class RpcHubGeneratorTests
     [Fact]
     public void Omitted_timeout_keeps_call_shape_byte_identical()
     {
-        // TimeoutMs 미지정(-1)이면 호출 인수에 아무것도 끼워 넣지 않는다 — 기존 소비자 생성 텍스트 불변.
+        // With TimeoutMs omitted (-1), nothing is injected into the call arguments — generated text for existing consumers stays byte-identical.
         var result = GeneratorHarness.Run(GeneratorHarness.ClientHub(AddContract));
 
         Assert.Contains("RequestRPC(3, __payload, global::DRPC.RpcDeliveryMode.ReliableOrdered, cancellationToken)",
@@ -467,7 +467,7 @@ public class RpcHubGeneratorTests
     [Fact]
     public void DRPCGEN003_fires_in_declaration_assembly_without_hub()
     {
-        // 허브 없이 계약만 있어도 선언부에서 타입 검증이 돈다 — 계약 어셈블리 단독 빌드도 걸린다.
+        // Type validation runs on declarations even without a hub — so contract-only assemblies are caught on their own builds too.
         var result = GeneratorHarness.Run("""
             using DRPC;
             using DRPC.Shared.Interface;
@@ -482,7 +482,7 @@ public class RpcHubGeneratorTests
             """);
 
         Diagnostic_AssertIds(result, "DRPCGEN003");
-        // 메서드 선언 위치에 찍힌다 — 위치 없는 베어 CSC 에러가 아니다.
+        // The diagnostic points at the method declaration — not a location-less bare CSC error.
         Assert.True(result.WithId("DRPCGEN003").Single().Location.IsInSource);
         Assert.Contains("Join", result.WithId("DRPCGEN003").Single().GetMessage());
     }
@@ -490,7 +490,7 @@ public class RpcHubGeneratorTests
     [Fact]
     public void DRPCGEN003_when_type_implements_message_serializable_without_attribute()
     {
-        // 엄격 규칙: IMessageSerializable<T> 구현만으로는 부족 — [Message] 표시 속성이 있어야 한다.
+        // Strict rule: implementing IMessageSerializable<T> alone is not enough — the [Message] marker attribute is required.
         var result = GeneratorHarness.Run("""
             using DRPC;
             using DRPC.Shared.Interface;
@@ -513,7 +513,7 @@ public class RpcHubGeneratorTests
     [Fact]
     public void validation_failure_emits_skeleton_so_no_CS0759_wall()
     {
-        // 검증 실패 시 정의 선언만 담은 스켈레톤이 나와 사용자 partial 구현이 고아가 되지 않는다.
+        // On validation failure, a skeleton containing only the defining declaration is emitted so the user's partial implementation is not orphaned.
         var result = GeneratorHarness.Run(GeneratorHarness.ServerHub(
             "[RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 1)] int Join(Untagged player);",
             hubBody: """
@@ -525,9 +525,9 @@ public class RpcHubGeneratorTests
             """);
 
         Diagnostic_AssertIds(result, "DRPCGEN003");
-        // 스켈레톤: 사용자 구현이 붙을 정의 선언이 존재한다.
+        // Skeleton: the defining declaration the user implementation attaches to exists.
         Assert.Contains("Join_Implementation", result.GeneratedSource);
-        // 후속 컴파일 에러(CS0759 벽) 없음 — DRPCGEN003 이 유일한 에러다.
+        // No follow-on compile errors (no CS0759 wall) — DRPCGEN003 is the only error.
         Assert.Empty(result.CompileErrors());
     }
 }

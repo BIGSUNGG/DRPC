@@ -9,22 +9,24 @@ using DRPC.CodeGenerator.Reference;
 namespace DRPC.CodeGenerator;
 
 /// <summary>
-/// <c>partial class X : ClientHub&lt;…&gt;</c> / <c>ServerHub&lt;…&gt;</c> 를 찾아 RPC 스텁을 생성한다.
+/// Finds <c>partial class X : ClientHub&lt;…&gt;</c> / <c>ServerHub&lt;…&gt;</c> and generates the RPC stubs.
 /// </summary>
 [Generator(LanguageNames.CSharp)]
 public sealed class RpcIncrementalGenerator : IIncrementalGenerator
 {
+    /// <summary>Registers the syntax providers and source outputs: hub stub generation, declaration type validation (DRPCGEN003), and generic call-site checks (DRPCGEN008).</summary>
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<ClassDeclarationSyntax> candidates =
             context.SyntaxProvider.CreateSyntaxProvider(
                 static (node, _) => node is ClassDeclarationSyntax classDecl
                     && classDecl.BaseList != null
-                    // 구문만 보고 허브 후보를 거른다: partial 이 아닌 클래스도 지나가야 DRPCGEN001 을 낼 수 있다.
+                    // Filter hub candidates by syntax only: non-partial classes must pass
+                    // through too, so DRPCGEN001 can be raised for them.
                     && classDecl.BaseList.Types.Any(static b => b.Type.ToString().IndexOf("Hub", System.StringComparison.Ordinal) >= 0),
                 static (ctx, _) => (ClassDeclarationSyntax)ctx.Node);
 
-        // 제네릭 스텁 호출 지점(DRPCGEN008): 미해결 {Method}Async 호출을 구조적으로 검사한다.
+        // Generic stub call sites (DRPCGEN008): structurally validate unresolved {Method}Async calls.
         IncrementalValuesProvider<InvocationExpressionSyntax> stubCalls =
             context.SyntaxProvider.CreateSyntaxProvider(
                 static (node, _) => node is InvocationExpressionSyntax inv
@@ -32,8 +34,9 @@ public sealed class RpcIncrementalGenerator : IIncrementalGenerator
                     && methodName.EndsWith("Async", System.StringComparison.Ordinal),
                 static (ctx, _) => (InvocationExpressionSyntax)ctx.Node);
 
-        // 선언부 타입 검증(DRPCGEN003): [RemoteProcedure] 메서드는 허브 유무와 무관하게
-        // 선언한 어셈블리에서 매개변수·반환 타입 검증을 받는다 — 메서드 선언 위치에 바로 진단이 뜬다.
+        // Declaration type validation (DRPCGEN003): [RemoteProcedure] methods get
+        // parameter/return type validation in their declaring assembly regardless of any hub —
+        // the diagnostic appears right at the method declaration.
         IncrementalValuesProvider<MethodDeclarationSyntax> rpcDeclarations =
             context.SyntaxProvider.CreateSyntaxProvider(
                 static (node, _) => node is MethodDeclarationSyntax { AttributeLists.Count: > 0 },
@@ -52,7 +55,7 @@ public sealed class RpcIncrementalGenerator : IIncrementalGenerator
             if (references.RemoteProcedureAttributeType == null ||
                 !method.HasAttribute(references.RemoteProcedureAttributeType))
             {
-                return; // [RemoteProcedure] 가 붙지 않은 메서드 — 대상 아님.
+                return; // Method without [RemoteProcedure] — not a target.
             }
 
             RpcHubSourceGenerator.CheckPayloadTypes(new MethodMetadata(method, references), references,
@@ -67,7 +70,7 @@ public sealed class RpcIncrementalGenerator : IIncrementalGenerator
             var references = new AttributeReferences(compilation);
             if (references.RemoteProcedureAttributeType == null)
             {
-                return; // DRPC.Attribute 미참조 프로젝트 — 대상 아님.
+                return; // Project without a DRPC.Attribute reference — not a target.
             }
 
             Diagnostic? diagnostic = GenericCallSiteCheck.Check(invocation, semanticModel, references);
@@ -89,7 +92,7 @@ public sealed class RpcIncrementalGenerator : IIncrementalGenerator
             var references = new AttributeReferences(compilation);
             if (references.RemoteProcedureAttributeType == null)
             {
-                return; // DRPC.Attribute 미참조 프로젝트 — 대상 아님.
+                return; // Project without a DRPC.Attribute reference — not a target.
             }
 
             string? source = RpcHubSourceGenerator.Generate(hubSymbol, references,

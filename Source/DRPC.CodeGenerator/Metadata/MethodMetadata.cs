@@ -4,42 +4,47 @@ using DRPC.CodeGenerator.Reference;
 
 namespace DRPC.CodeGenerator.Metadata;
 
-/// <summary>[RemoteProcedure] 가 붙은 계약 메서드 하나.</summary>
+/// <summary>A single contract method marked with [RemoteProcedure].</summary>
 internal sealed class MethodMetadata
 {
+    /// <summary>The contract method symbol.</summary>
     public IMethodSymbol Symbol { get; }
+    /// <summary>The RPC method name (the contract method's name).</summary>
     public string MethodName => Symbol.Name;
 
-    /// <summary>타입 분류(메시형 여부)에 쓰는 이름 해석 테이블. 이미터가 그대로 투과한다.</summary>
+    /// <summary>Name-resolution table for type classification (e.g. message-kind checks). Passed through to the emitter unchanged.</summary>
     public AttributeReferences References { get; }
 
-    /// <summary>선언 인터페이스 이름. 생성되는 페이로드 헬퍼 이름충돌 방지용 접두사.</summary>
+    /// <summary>Name of the declaring interface. Used as a prefix to keep generated payload helper names collision-free.</summary>
     public string DeclarationName { get; }
 
+    /// <summary>The wire method id.</summary>
     public int MethodId { get; }
+    /// <summary>Whether the id came from an explicit [RemoteProcedure] argument (vs. the name-hash fallback).</summary>
     public bool HasExplicitMethodId { get; }
+    /// <summary>Whether the call is one-way (fire-and-forget, no response wait).</summary>
     public bool OneWay { get; }
 
-    /// <summary>호출별 응답 대기 상한(밀리초). -1(기본) = 허브 기본 상속, 양수 = 이 호출 전용 예산.</summary>
+    /// <summary>Per-call response wait budget in milliseconds. -1 (default) = inherit the hub default; positive = this call's own budget.</summary>
     public int TimeoutMs { get; }
 
-    /// <summary>true면 _Implementation 호출 전 _Validate(Task&lt;bool&gt;) 게이트를 건다.</summary>
+    /// <summary>When true, gates the _Implementation call behind a _Validate (Task&lt;bool&gt;) check.</summary>
     public bool Validation { get; }
 
-    /// <summary>예: <c>global::DRPC.RpcDeliveryMode.Unreliable</c></summary>
+    /// <summary>Example: <c>global::DRPC.RpcDeliveryMode.Unreliable</c></summary>
     public string ModeExpression { get; }
 
     public ParameterMetadata[] Parameters { get; }
     public ITypeSymbol ReturnType { get; }
 
-    /// <summary>제네릭 메서드의 구성 표. 비제네릭이면 null.</summary>
+    /// <summary>Instantiation table for a generic method. Null for non-generic methods.</summary>
     public GenericMethodMetadata? Generic { get; }
 
     public bool IsGeneric => Generic != null;
 
     public bool IsVoidReturn => ReturnType.SpecialType == SpecialType.System_Void;
 
-    /// <summary>생성될 사용자 구현(partial) 메서드 서명.</summary>
+    /// <summary>Signature of the generated user implementation (partial) method.</summary>
     public string ImplementationSignature
     {
         get
@@ -51,7 +56,7 @@ internal sealed class MethodMetadata
         }
     }
 
-    /// <summary>Validation=true 일 때 생성되는 검증(partial) 메서드 서명. 매개변수는 원본과 동일.</summary>
+    /// <summary>Signature of the generated validation (partial) method when Validation=true. Parameters are identical to the original.</summary>
     public string ValidateSignature
     {
         get
@@ -61,7 +66,7 @@ internal sealed class MethodMetadata
         }
     }
 
-    /// <summary>생성된 코드 안에서 쓰는 반환 타입 표시(네임스페이스 차이 안전을 위해 항상 fully qualified).</summary>
+    /// <summary>Return type display used inside generated code (always fully qualified, safe across namespace differences).</summary>
     public string ReturnTypeDisplay => ReturnType.ToDisplayString(RpcPayload.Qualified);
 
     public MethodMetadata(IMethodSymbol methodSymbol, AttributeReferences references)
@@ -86,10 +91,7 @@ internal sealed class MethodMetadata
     public string ParameterDeclarationList() => string.Join(", ", Parameters.Select(p =>
         $"{p.Type.ToDisplayString(RpcPayload.Qualified)} {p.Name}"));
 
-    /// <summary>
-    /// 와이어 MethodId 자동 할당용 안정 식별자: 인터페이스 FQN + 메서드명 + 매개변수 타입 시그니처.
-    /// 선언 순서와 무관하게 이름이 같으면 항상 같은 값이 나온다.
-    /// </summary>
+    /// <summary>Builds the stable identity used for automatic wire MethodId assignment: interface FQN + method name + parameter-type signature. The same name always yields the same value, regardless of declaration order.</summary>
     static string BuildWireIdentity(IMethodSymbol method)
     {
         string owner = method.ContainingType?.ToDisplayString(RpcPayload.Qualified) ?? "";
@@ -97,7 +99,7 @@ internal sealed class MethodMetadata
         return $"{owner}.{method.Name}({signature})";
     }
 
-    /// <summary>FNV-1a 32비트. string.GetHashCode 는 프로세스마다 랜덤이라 와이어 계약에 쓸 수 없다.</summary>
+    /// <summary>FNV-1a 32-bit. string.GetHashCode is randomized per process, so it cannot serve as a wire contract.</summary>
     static int StableHash(string text)
     {
         unchecked
@@ -204,9 +206,12 @@ internal sealed class MethodMetadata
 
     internal sealed class ParameterMetadata
     {
+        /// <summary>Parameter name.</summary>
         public string Name { get; }
+        /// <summary>Parameter type.</summary>
         public ITypeSymbol Type { get; }
 
+        /// <summary>Wraps a parameter symbol's name and type.</summary>
         public ParameterMetadata(string name, ITypeSymbol type)
         {
             Name = name;

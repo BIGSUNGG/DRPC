@@ -5,65 +5,65 @@ using MessageProtocol;
 namespace Sandbox.Contracts;
 
 /// <summary>
-/// 서버가 구현하고 클라이언트가 호출하는 계약. 반환 타입은 <c>Task</c> 없이 plain 하게 쓴다
-/// (생성된 스텁이 이미 <c>{Method}Async</c> 이다).
+/// Contract implemented by the server and called by the client. Return types are written plainly, without <c>Task</c>
+/// (the generated client stubs already expose <c>{Method}Async</c>).
 /// </summary>
 public interface IGameServerProcedures : IServerProcedureDeclarations
 {
-    /// <summary>전송 방식 생략 = 기본 ReliableOrdered.</summary>
+    /// <summary>Omitting the delivery mode defaults to ReliableOrdered.</summary>
     [RemoteProcedure(methodId: 0)]
     int Add(int value1, int value2);
 
-    /// <summary>MessageProtocol 메시지 타입([Message(MessageKind.NonId)])은 매개변수·반환 값으로 그대로 쓰면 된다.</summary>
+    /// <summary>MessageProtocol message types ([Message(MessageKind.NonId)]) can be used directly as parameters and return values.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 1)]
     PlayerJoined Join(Player player);
 
-    /// <summary>Sequenced 오버라이드: 유실 감수 + 최신 순서만 유지하는 상태 갱신.</summary>
+    /// <summary>Sequenced state updates: loss is tolerated and updates arrive in order, so the latest received update is the current state.</summary>
     [RemoteProcedure(RpcDeliveryMode.Sequenced, 2)]
     void SetPosition(int playerId, float x, float y);
 
-    /// <summary>OneWay: 응답을 기다리지 않는다.</summary>
+    /// <summary>OneWay: does not wait for a response.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableUnordered, 3, OneWay = true)]
     void LogChat(string text);
 
-    /// <summary>다형성: 그룹 루트 타입으로 선언하면 실제 타입으로 복원되어 전달된다.</summary>
+    /// <summary>Polymorphism: declaring the group root type preserves the actual derived type, which is restored on delivery.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableUnordered, 4, OneWay = true)]
     void ChatMessage(ChatLine line);
 
-    /// <summary>제네릭 ①: 반환 전용. 허용 T 를 [GenericProcedure] 로 사전 선언한다.</summary>
+    /// <summary>Generic ①: return-only. Pre-declare the allowed T set via [GenericProcedure].</summary>
     [RemoteProcedure(methodId: 5)]
     [GenericProcedure(typeof(int), typeof(string))]
     T GetConfig<T>();
 
-    /// <summary>제네릭 ②: 매개변수 제네릭. 타입 인자 없이 일반 호출처럼 쓴다(T 추론).</summary>
+    /// <summary>Generic ②: parameter generic. Called like a normal method without type arguments (T is inferred).</summary>
     [RemoteProcedure(methodId: 6)]
     [GenericProcedure(typeof(int), typeof(string))]
     string Describe<T>(T value);
 
-    /// <summary>제네릭 ③: 복합 다중 슬롯(데카르트 곱). T2/T3 는 매개변수, T1 은 반환.</summary>
+    /// <summary>Generic ③: multiple slots combined (Cartesian product). T2/T3 are parameters, T1 is the return.</summary>
     [RemoteProcedure(methodId: 7)]
     [GenericProcedure(0, typeof(int), typeof(string))]
     [GenericProcedure(1, typeof(float), typeof(double))]
     [GenericProcedure(2, typeof(Player), typeof(ChatLine))]
     T1 Blend<T1, T2, T3>(T2 left, T3 right);
 
-    /// <summary>제네릭 ④: [GenericMessage] 파라미터. T 허용 집합은 GiftBox 구성 선언에서 상속한다.</summary>
+    /// <summary>Generic ④: [GenericMessage] parameter. T's allowed set is inherited from the GiftBox configuration declarations.</summary>
     [RemoteProcedure(methodId: 8)]
     void Unwrap<T>(GiftBox<T> box);
 
-    /// <summary>F14 검증 게이트: _Validate 가 true 여야만 _Implementation 이 호출된다. false 면
-    /// 구현은 실행되지 않고 클라이언트에 RpcErrorCode.ValidationFailed(7) 오류가 간다.</summary>
+    /// <summary>F14 validation gate: _Implementation runs only when _Validate returns true. On false,
+    /// the implementation never executes and the client receives an RpcErrorCode.ValidationFailed(7) fault.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 9, Validation = true)]
     int TransferGold(int fromPlayer, int toPlayer, int amount);
 }
 
-/// <summary>클라이언트가 구현하고 서버가 호출하는 계약(양방향 RPC).</summary>
+/// <summary>Contract implemented by the client and called by the server (bidirectional RPC).</summary>
 public interface IGameClientProcedures : IClientProcedureDeclarations
 {
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 0)]
     float EchoSum(List<float> values);
 
-    /// <summary>nullable·배열 혼합 사용 예.</summary>
+    /// <summary>Example mixing nullable and array parameters.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 1)]
     int CountConfig(string? label, int[] values);
 
@@ -71,7 +71,7 @@ public interface IGameClientProcedures : IClientProcedureDeclarations
     void NotifyScore(ScoreBoard score);
 }
 
-/// <summary>DTO 는 MessageProtocol 메시지 표시를 붙인다 — RPC 는 이 직렬화를 그대로 재사용한다. (NonId 는 id·category 인자 사용 불가)</summary>
+/// <summary>DTOs carry the MessageProtocol message attribute — RPC reuses this serialization as-is. (NonId does not allow id/category arguments)</summary>
 [Message(MessageKind.NonId)]
 public partial class Player
 {
@@ -100,7 +100,7 @@ public partial class ScoreBoard
     public List<ScoreLine> Lines { get; set; } = new();
 }
 
-/// <summary>그룹 루트. 이 타입을 매개변수로 받으면 아래 요소 타입들이 그대로 올라온다.</summary>
+/// <summary>Group root. When a parameter is declared as this type, the derived element types below arrive as-is.</summary>
 [Message(MessageKind.Parent, 11, MessageCategory.Category2)]
 public partial class ChatLine
 {
@@ -109,7 +109,7 @@ public partial class ChatLine
     public virtual string Describe() => $"chat: {Text}";
 }
 
-// 3.0.0 마이그레이션: 구문법 수동 위치 0 은 신문법에서 표현 불가(id 0 = 생략→FullName 해시) — 해시 id 사용.
+// 3.0.0 migration: manual positional id 0 from the old syntax is not expressible in the new syntax (id 0 = omitted → FullName hash) — a hash id is used instead.
 [Message(MessageKind.Child)]
 public partial class ShoutChatLine : ChatLine
 {
@@ -117,8 +117,8 @@ public partial class ShoutChatLine : ChatLine
 }
 
 /// <summary>
-/// 제네릭 ④용 [GenericMessage]. T 는 ID 헤더 메시지(Standalone/Group)여야 한다 —
-/// 구성 등록이 (MessageId, ClassId) 디스패치를 요구한다(NonId·프리미티브는 DRPCGEN009 로 거부).
+/// [GenericMessage] for generic ④. T must be an ID-headered message (Standalone/Group) —
+/// configuration registration requires (MessageId, ClassId) dispatch (NonId and primitives are rejected with DRPCGEN009).
 /// </summary>
 [Message(MessageKind.Standalone, 60, MessageCategory.Category2)]
 [GenericMessage(typeof(GiftBox<ChatLine>), ClassId = 1)]

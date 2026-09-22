@@ -8,13 +8,16 @@ using DRPC.CodeGenerator.Reference;
 namespace DRPC.CodeGenerator;
 
 /// <summary>
-/// 제네릭 스텁 호출 지점 검사(DRPCGEN008). 생성된 <c>{Method}Async&lt;…&gt;</c> 스텁은 입력 컴파일에
-/// 아직 없으므로 심볼이 못 풀리는(미해결) 호출을 구조적으로 잡는다: 리시버가 허브이고 이름이
-/// 계약 제네릭 메서드 + "Async" 이면, 명시 타입 인자 또는 인자 타입 추론으로 슬롯 집합을 검증한다.
-/// 추론이 안 되는 자리(반환 전용 슬롯 등)는 스킵 — 런타임 백스톱(stub throw)이 남아 있다.
+/// Generic stub call-site check (DRPCGEN008). The generated <c>{Method}Async&lt;…&gt;</c> stubs do
+/// not exist yet in the input compilation, so their calls stay unresolved. This catches such
+/// calls structurally: when the receiver is a hub and the name is a contract generic method
+/// + "Async", it validates the slot sets via explicit type arguments or argument-type
+/// inference. Positions that cannot be inferred (return-only slots, etc.) are skipped — a
+/// runtime backstop (stub throw) remains.
 /// </summary>
 internal static class GenericCallSiteCheck
 {
+    /// <summary>Returns a diagnostic when the call site binds a generic slot to an undeclared type, otherwise null.</summary>
     public static Diagnostic? Check(InvocationExpressionSyntax invocation, SemanticModel semanticModel, AttributeReferences references)
     {
         if (invocation.Expression is not MemberAccessExpressionSyntax { Name: SimpleNameSyntax name } access)
@@ -28,7 +31,7 @@ internal static class GenericCallSiteCheck
             return null;
         }
 
-        // 사용자가 직접 정의한 멤버로 이미 풀리면 생성 스텁 호출이 아니다.
+        // If it already resolves to a member the user defined, it is not a generated-stub call.
         if (semanticModel.GetSymbolInfo(invocation).Symbol != null)
         {
             return null;
@@ -63,7 +66,7 @@ internal static class GenericCallSiteCheck
 
             ITypeSymbol?[] bindings = new ITypeSymbol?[generic.SlotTypes.Length];
 
-            // 명시 타입 인자: <int, string>
+            // Explicit type arguments: <int, string>
             if (name is GenericNameSyntax genericName &&
                 genericName.TypeArgumentList.Arguments.Count == bindings.Length)
             {
@@ -74,7 +77,8 @@ internal static class GenericCallSiteCheck
             }
             else if (invocation.ArgumentList.Arguments.Count == method.Parameters.Length)
             {
-                // 추론: 매개변수 타입이 그대로 타입 파라미터이거나 [GenericMessage] 단일 위치 사용이면 인자에서 묶는다.
+                // Inference: bind slots from arguments when the parameter type is a bare type
+                // parameter or a single-position [GenericMessage] usage.
                 for (int j = 0; j < method.Parameters.Length; j++)
                 {
                     ITypeSymbol parameterType = method.Parameters[j].Type;
@@ -108,7 +112,7 @@ internal static class GenericCallSiteCheck
         return null;
     }
 
-    /// <summary>매개변수 타입이 (a) 타입 파라미터 그 자체이거나 (b) 그 타입 파라미터를 인자로 쓰는 [GenericMessage] 면 인자 타입에서 슬롯을 묶는다.</summary>
+    /// <summary>Binds a slot from the argument type when the parameter type is (a) the type parameter itself or (b) a [GenericMessage] using that type parameter as an argument.</summary>
     static void BindSlot(ITypeSymbol parameterType, ITypeSymbol? argumentType, MethodMetadata method, GenericMethodMetadata generic, ITypeSymbol?[] bindings)
     {
         if (argumentType == null)

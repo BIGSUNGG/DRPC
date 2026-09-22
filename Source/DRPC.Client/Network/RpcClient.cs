@@ -5,12 +5,22 @@ using DRPC.Shared.Network;
 namespace DRPC.Client.Network;
 
 /// <summary>
-/// RUDP 접속 후 허브를 조립한다. 생성된 <c>{Hub}.ConnectAsync</c> 가 이 메서드를 부른다.
+/// Assembles hubs after an RUDP connection is established. The generated
+/// <c>{Hub}.ConnectAsync</c> calls these methods.
 /// </summary>
 public static class RpcClient
 {
-    /// <exception cref="InvalidOperationException">접속 거부·호스트 해석 실패·재시도 소진.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> 취소.</exception>
+    /// <summary>
+    /// Connects to the server and assembles a hub of <typeparamref name="THub"/> over the
+    /// resulting channel. Uses the transport stack's default connect timeout (about 5 seconds).
+    /// </summary>
+    /// <param name="host">Server host name or address.</param>
+    /// <param name="port">Server port.</param>
+    /// <param name="connectionKey">Shared connection key, or null for none. Both endpoints must agree.</param>
+    /// <param name="hubFactory">Creates the hub from the connected channel.</param>
+    /// <param name="cancellationToken">Cancels the connect attempt.</param>
+    /// <exception cref="InvalidOperationException">Connection refused, host resolution failed, or retries exhausted.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public static Task<THub> ConnectAsync<THub>(
         string host,
         int port,
@@ -21,12 +31,19 @@ public static class RpcClient
         => ConnectAsync(host, port, connectionKey, 0, hubFactory, cancellationToken);
 
     /// <summary>
-    /// <paramref name="connectTimeoutMs"/> 를 지정하면 침묵 호스트(패킷 블랙홀)에 대한 연결 실패를
-    /// 그 시간 이내로 확정한다. 0 이하면 전송 스택 기본값(약 5초)을 유지한다.
+    /// When <paramref name="connectTimeoutMs"/> is set, connection failure against a silent host
+    /// (packet black hole) is confirmed within that time. Zero or less keeps the transport stack
+    /// default (about 5 seconds).
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="connectTimeoutMs"/> 가 음수.</exception>
-    /// <exception cref="InvalidOperationException">접속 거부·호스트 해석 실패·재시도 소진.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> 취소.</exception>
+    /// <param name="host">Server host name or address.</param>
+    /// <param name="port">Server port.</param>
+    /// <param name="connectionKey">Shared connection key, or null for none. Both endpoints must agree.</param>
+    /// <param name="connectTimeoutMs">Connect timeout in milliseconds; 0 or less for the transport default.</param>
+    /// <param name="hubFactory">Creates the hub from the connected channel.</param>
+    /// <param name="cancellationToken">Cancels the connect attempt.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="connectTimeoutMs"/> is negative.</exception>
+    /// <exception cref="InvalidOperationException">Connection refused, host resolution failed, or retries exhausted.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public static async Task<THub> ConnectAsync<THub>(
         string host,
         int port,
@@ -47,11 +64,17 @@ public static class RpcClient
     }
 
     /// <summary>
-    /// <see cref="RpcEndpointOptions"/> 로 전송 옵션(키·연결 타임아웃·CRC32c 무결성 등)을 일괄 지정한다.
+    /// Specifies transport options (key, connect timeout, CRC32c integrity, etc.) in bulk via
+    /// <see cref="RpcEndpointOptions"/>.
     /// </summary>
-    /// <exception cref="ArgumentNullException"><paramref name="endpointOptions"/> 가 null.</exception>
-    /// <exception cref="InvalidOperationException">접속 거부·호스트 해석 실패·재시도 소진.</exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> 취소.</exception>
+    /// <param name="host">Server host name or address.</param>
+    /// <param name="port">Server port.</param>
+    /// <param name="endpointOptions">Transport options to apply.</param>
+    /// <param name="hubFactory">Creates the hub from the connected channel.</param>
+    /// <param name="cancellationToken">Cancels the connect attempt.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="endpointOptions"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">Connection refused, host resolution failed, or retries exhausted.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
     public static Task<THub> ConnectWithOptionsAsync<THub>(
         string host,
         int port,
@@ -69,7 +92,7 @@ public static class RpcClient
             hubFactory, cancellationToken);
     }
 
-    /// <summary>전송 옵션 조립 후 접속·허브 팩토리 조립까지의 단일 경로(중복 제거 — 구조 검토 1건).</summary>
+    /// <summary>Single path from transport-option assembly through connect and hub assembly (deduplication — structure review finding).</summary>
     static async Task<THub> ConnectCoreAsync<THub>(
         string host,
         int port,

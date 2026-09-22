@@ -1,15 +1,15 @@
 namespace DRPC.Shared.Interface;
 
 /// <summary>
-/// 서버 측 RPC 계약 인터페이스 마커. 생성기는 이 인터페이스의 <c>[RemoteProcedure]</c> 메서드를
-/// 서버 Hub 에서는 Incoming, 클라이언트 Hub 에서는 Outgoing 으로 배정한다.
+/// Marker for server-side RPC contract interfaces. The generator assigns the interface's
+/// <c>[RemoteProcedure]</c> methods as Incoming on a server hub and Outgoing on a client hub.
 /// </summary>
 public interface IServerProcedureDeclarations
 {
 }
 
 /// <summary>
-/// 클라이언트 측 RPC 계약 인터페이스 마커. 서버 Hub 에서는 Outgoing, 클라이언트 Hub 에서는 Incoming.
+/// Marker for client-side RPC contract interfaces. Incoming on a server hub, Outgoing on a client hub.
 /// </summary>
 public interface IClientProcedureDeclarations
 {

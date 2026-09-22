@@ -4,29 +4,42 @@ using Microsoft.CodeAnalysis;
 namespace DRPC.CodeGenerator.Reference;
 
 /// <summary>
-/// 생성기가 참조하는 타입을 메타데이터 이름으로 해석한다.
-/// DRPC·MessageProtocol 프로젝트와의 컴파일 타임 의존을 끊는 지점(이름 문자열이 유일한 계약).
+/// Resolves the types the generator references by metadata name.
+/// This is the seam that cuts compile-time coupling to the DRPC·MessageProtocol projects
+/// (the name strings are the only contract).
 /// </summary>
 internal sealed class AttributeReferences
 {
+    /// <summary>Metadata name of [RemoteProcedure].</summary>
     public const string RemoteProcedureTypeName = "DRPC.RemoteProcedure";
+    /// <summary>Metadata name of [GenericProcedure].</summary>
     public const string GenericProcedureTypeName = "DRPC.GenericProcedureAttribute";
+    /// <summary>Metadata name of RpcDeliveryMode.</summary>
     public const string RpcDeliveryModeTypeName = "DRPC.RpcDeliveryMode";
+    /// <summary>Metadata name of the client hub base.</summary>
     public const string ClientHubTypeName = "DRPC.Client.Network.ClientHub";
+    /// <summary>Metadata name of the server hub base.</summary>
     public const string ServerHubTypeName = "DRPC.Server.Network.ServerHub";
+    /// <summary>Metadata name of the server contract interface.</summary>
     public const string ServerDeclarationsTypeName = "DRPC.Shared.Interface.IServerProcedureDeclarations";
+    /// <summary>Metadata name of the client contract interface.</summary>
     public const string ClientDeclarationsTypeName = "DRPC.Shared.Interface.IClientProcedureDeclarations";
 
-    /// <summary>MessageProtocol 의 메시지 표시 속성류 ([Message(MessageKind, …)], Generic).</summary>
+    /// <summary>MessageProtocol's message display attribute family ([Message(MessageKind, …)], Generic).</summary>
     public const string MessageNamespace = "MessageProtocol";
 
-    /// <summary>MessageProtocol.MessageKind.NonId 열거값과 동결(와이어 플래그처럼 불변 계약). 3.0.0 부터 종류·ID·카테고리는 [Message] 단일 속성로 선언한다.</summary>
+    /// <summary>Frozen value of MessageProtocol.MessageKind.NonId (an immutable contract, like a wire flag). From 3.0.0 on, kind·ID·category are declared via the single [Message] attribute.</summary>
     public const int MessageKindNonIdValue = 4;
 
+    /// <summary>The resolved [RemoteProcedure] attribute type, or null when not referenced.</summary>
     public INamedTypeSymbol? RemoteProcedureAttributeType { get; }
+    /// <summary>The resolved [GenericProcedure] attribute type, or null when not referenced.</summary>
     public INamedTypeSymbol? GenericProcedureAttributeType { get; }
+    /// <summary>The resolved RpcDeliveryMode type, or null when not referenced.</summary>
     public INamedTypeSymbol? RpcDeliveryModeType { get; }
 
+    /// <summary>Resolves the DRPC attribute types from the user compilation.</summary>
+    /// <param name="compilation">The compilation being analyzed.</param>
     public AttributeReferences(Compilation compilation)
     {
         RemoteProcedureAttributeType = compilation.GetTypeByMetadataName(RemoteProcedureTypeName);
@@ -34,12 +47,14 @@ internal sealed class AttributeReferences
         RpcDeliveryModeType = compilation.GetTypeByMetadataName(RpcDeliveryModeTypeName);
     }
 
+    /// <summary>Whether the attribute class is DRPC's [GenericProcedure].</summary>
+    /// <param name="attributeClass">Attribute class to test, or null.</param>
     public bool IsGenericProcedureAttribute(INamedTypeSymbol? attributeClass)
         => attributeClass != null
             && attributeClass.ContainingNamespace?.ToDisplayString() == "DRPC"
             && attributeClass.Name == "GenericProcedureAttribute";
 
-    /// <summary>이 메시지 타입(닫힌 구성 포함)이 [GenericMessage] 구성을 하나 이상 선언했는지.</summary>
+    /// <summary>Whether this message type (including closed constructions) declares at least one [GenericMessage] construction.</summary>
     public bool HasGenericMessageAttribute(INamedTypeSymbol type)
     {
         foreach (var attribute in type.GetAttributes())
@@ -53,7 +68,7 @@ internal sealed class AttributeReferences
         return false;
     }
 
-    /// <summary>[GenericMessage(typeof(X&lt;…&gt;), ClassId=…)] 구성 선언에서 position 번째 타입 인자만 순서대로 뽑는다.</summary>
+    /// <summary>From [GenericMessage(typeof(X&lt;…&gt;), ClassId=…)] construction declarations, extracts only the position-th type argument, in declaration order.</summary>
     public IReadOnlyList<ITypeSymbol> GetGenericConstructionArguments(INamedTypeSymbol type, int position)
     {
         var result = new System.Collections.Generic.List<ITypeSymbol>();
@@ -80,12 +95,15 @@ internal sealed class AttributeReferences
         => attribute.AttributeClass?.ContainingNamespace?.ToDisplayString() == MessageNamespace
             && attribute.AttributeClass.Name == "GenericMessageAttribute";
 
+    /// <summary>Whether the type carries any MessageProtocol message display attribute.</summary>
+    /// <param name="type">Type to test.</param>
     public bool HasMessageAttribute(ITypeSymbol type)
         => MessageStyleOf(type) != MessageStyle.None;
 
     /// <summary>
-    /// 메시지 타입의 직렬화 스타일. 와이어에 ID 헤더를 얹는 종류(Standalone/Group/Generic)와
-    /// 헤더 없이 타입 고정으로 얹는 NonId 를 가른다 — 중첩 값을 쓸 때 어느 API 를 써야 하는지의 근거.
+    /// Serialization style of a message type. Distinguishes the kinds that put an ID header on
+    /// the wire (Standalone/Group/Generic) from NonId, which is sent type-fixed without a
+    /// header — the basis for choosing which payload API to use for nested values.
     /// </summary>
     public MessageStyle MessageStyleOf(ITypeSymbol type)
     {
@@ -102,8 +120,9 @@ internal sealed class AttributeReferences
             switch (name)
             {
                 case "MessageAttribute":
-                    // [Message(kind, id, category)] — Kind 가 NonId 면 헤더 없는 타입 고정 직렬화,
-                    // 나머지(Automatic/Standalone/Parent/Child)는 모두 ID 헤더를 얹는다.
+                    // [Message(kind, id, category)] — NonId kinds use header-less, type-fixed
+                    // serialization; all others (Automatic/Standalone/Parent/Child) put an ID
+                    // header on the wire.
                     return IsNonIdKind(attribute)
                         ? MessageStyle.NonId
                         : MessageStyle.HasId;
@@ -116,7 +135,7 @@ internal sealed class AttributeReferences
         return style;
     }
 
-    /// <summary>[Message] 의 Kind 인자가 NonId 인지 — 위치 인자와 명명 인자(kind:) 양쪽을 본다. 인자가 없으면 Automatic(=ID 헤더 종류).</summary>
+    /// <summary>Whether the Kind argument of [Message] is NonId — checks both the positional and the named (kind:) argument. With no argument, Automatic (= an ID-header kind) is assumed.</summary>
     static bool IsNonIdKind(AttributeData attribute)
     {
         foreach (var argument in attribute.ConstructorArguments)
@@ -144,15 +163,15 @@ internal sealed class AttributeReferences
 
 }
 
-/// <summary>메시지 타입의 페이로드 기록 방식 구분.</summary>
+/// <summary>How a message type is written into the payload.</summary>
 internal enum MessageStyle
 {
-    /// <summary>MessageProtocol 메시지가 아님.</summary>
+    /// <summary>Not a MessageProtocol message.</summary>
     None,
 
-    /// <summary><c>[Message(MessageKind.NonId)]</c> — 생성된 정적 Serialize/Deserialize 로 왕복한다. 표시 속성이 없으면 NonId 로 인정하지 않는다(엄격 규칙).</summary>
+    /// <summary><c>[Message(MessageKind.NonId)]</c> — round-trips via generated static Serialize/Deserialize. Without the display attribute, NonId is not granted (strict rule).</summary>
     NonId,
 
-    /// <summary>Standalone/Group/Generic — 헤더의 ID 로 라우팅하므로 object dispatch 가 가능하다(그룹 다형성 유지).</summary>
+    /// <summary>Standalone/Group/Generic — routed by the header ID, so object dispatch is possible (group polymorphism preserved).</summary>
     HasId,
 }

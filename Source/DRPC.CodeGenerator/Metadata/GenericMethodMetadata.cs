@@ -6,39 +6,40 @@ using DRPC.CodeGenerator.Reference;
 namespace DRPC.CodeGenerator.Metadata;
 
 /// <summary>
-/// 제네릭 [RemoteProcedure] 메서드의 구성 메타데이터.
+/// Instantiation metadata for a generic [RemoteProcedure] method.
 ///
-/// 슬롯별 허용 타입 목록([GenericProcedure])에서 데카르트 곱으로 닫힌 구성(instantiation)을
-/// 결정적 순서(마지막 슬롯이 가장 빨리 도는 오도미터)로 산출한다. 이 순서가 곧 와이어의
-/// 구성 인덱스(페이로드 첫 4바이트)이므로 양쪽 컴파일에서 같은 계약이면 같은 표가 나온다.
+/// Derives the closed set of instantiations from the per-slot allowed type lists declared via
+/// [GenericProcedure], in a deterministic order (odometer with the last slot spinning fastest).
+/// This order IS the wire instantiation index (the first 4 bytes of the payload), so identical
+/// contracts on both sides produce identical tables.
 ///
-/// [GenericProcedure] 미선언 슬롯은 시그니처의 [GenericMessage] 파라미터·반환(예: Package&lt;T&gt;)
-/// 의 구성 선언에서 허용 집합을 상속한다 — 이 경우 T 는 직접 직렬화되지 않고 메시지 헤더
-/// (MessageId, ClassId) 가 T 를 식별한다.
+/// A slot without a [GenericProcedure] declaration inherits its allowed set from the
+/// constructions of a [GenericMessage] parameter/return in the signature (e.g. Package&lt;T&gt;) —
+/// there T is not serialized directly; the message header (MessageId, ClassId) identifies T.
 /// </summary>
 internal sealed class GenericMethodMetadata
 {
     public IMethodSymbol Symbol { get; }
 
-    /// <summary>슬롯(타입 파라미터 순번) → 허용 타입 목록(선언 순서).</summary>
+    /// <summary>Slot (type-parameter ordinal) → allowed type list (declaration order).</summary>
     public IReadOnlyList<ITypeSymbol>?[] SlotTypes { get; }
 
-    /// <summary>닫힌 구성 전체. 순서 = 와이어 구성 인덱스.</summary>
+    /// <summary>All closed instantiations. Order = wire instantiation index.</summary>
     public IReadOnlyList<ITypeSymbol[]> Instantiations { get; }
 
-    /// <summary>구성별로 Construct 된 닫힌 메서드(매개변수·반환 타입 치환 완료).</summary>
+    /// <summary>The Construct-ed closed method per instantiation (parameters and return type substituted).</summary>
     public IReadOnlyList<IMethodSymbol> ClosedMethods { get; }
 
-    /// <summary>메서드 타입 파라미터 이름 목록(스텁·구현 partial 서명 표기용).</summary>
+    /// <summary>Names of the method's type parameters (for stub and implementation partial signatures).</summary>
     public IReadOnlyList<string> TypeParameterNames { get; }
 
-    /// <summary>검증 실패 사유. null 이면 유효.</summary>
+    /// <summary>Why validation failed. Null when valid.</summary>
     public string? Error { get; }
 
-    /// <summary>실패 시 보고할 진단 ID(DRPCGEN007 미선언 / DRPCGEN009 선언 무효).</summary>
+    /// <summary>Diagnostic id reported on failure (DRPCGEN007 undeclared / DRPCGEN009 invalid declaration).</summary>
     public string ErrorId { get; } = "DRPCGEN009";
 
-    /// <summary>생성기가 내보내는 구성 상한. 초과분은 진단으로 거부한다.</summary>
+    /// <summary>Upper bound on instantiations the generator emits. Excess is rejected with a diagnostic.</summary>
     public const int MaxInstantiations = 64;
 
     GenericMethodMetadata(
@@ -58,13 +59,13 @@ internal sealed class GenericMethodMetadata
         Error = error;
     }
 
-    /// <summary>메서드 심볼에서 구성 메타데이터를 만든다. 오류 사유는 <see cref="Error"/> 로 돌려주고 예외는 던지지 않는다.</summary>
+    /// <summary>Builds instantiation metadata from the method symbol. Returns the failure reason via <see cref="Error"/> instead of throwing.</summary>
     public static GenericMethodMetadata Build(IMethodSymbol method, AttributeReferences references)
     {
         int arity = method.TypeParameters.Length;
         var slotTypes = new IReadOnlyList<ITypeSymbol>?[arity];
 
-        // 1) [GenericProcedure] 선언 파싱
+        // 1) Parse [GenericProcedure] declarations
         foreach (var attribute in method.GetAttributes())
         {
             if (!references.IsGenericProcedureAttribute(attribute.AttributeClass))
@@ -72,7 +73,7 @@ internal sealed class GenericMethodMetadata
                 continue;
             }
 
-            // (params Type[]) → 슬롯 0, (int slot, params Type[]) → 지정 슬롯.
+            // (params Type[]) → slot 0; (int slot, params Type[]) → the declared slot.
             int slot;
             var typeArgs = attribute.ConstructorArguments;
             if (typeArgs.Length == 1)
@@ -115,7 +116,7 @@ internal sealed class GenericMethodMetadata
             slotTypes[slot] = types;
         }
 
-        // 2) 미선언 슬롯: 시그니처의 [GenericMessage] 사용에서 상속(Package<T> 패턴).
+        // 2) Undeclared slots: inherit from [GenericMessage] usages in the signature (Package<T> pattern).
         foreach (ITypeParameterSymbol typeParameter in method.TypeParameters)
         {
             int slot = typeParameter.Ordinal;
@@ -134,8 +135,9 @@ internal sealed class GenericMethodMetadata
             }
         }
 
-        // 2.5) [GenericMessage] 타입 인자로 흐르는 슬롯은 MessageProtocol 런타임 메시지 디스패치로
-        // 직렬화된다 — 허용 타입 전부가 메시지 타입이어야 한다(컴파일 타임 거부, 런타임 크래시 방지).
+        // 2.5) Slots flowing into [GenericMessage] type arguments are serialized through the
+        // MessageProtocol runtime message dispatch — every allowed type must be an ID-header
+        // message type (reject at compile time rather than crash at runtime).
         foreach (ITypeParameterSymbol typeParameter in method.TypeParameters)
         {
             if (SlotUsedAsGenericMessageArgument(method, typeParameter, references) is not { } message)
@@ -154,7 +156,7 @@ internal sealed class GenericMethodMetadata
             }
         }
 
-        // 3) 데카르트 곱 + Construct.
+        // 3) Cartesian product + Construct.
         var instantiations = Cartesian(slotTypes!).ToList();
         if (instantiations.Count > MaxInstantiations)
         {
@@ -168,7 +170,7 @@ internal sealed class GenericMethodMetadata
         return new GenericMethodMetadata(method, slotTypes, instantiations, closed, null);
     }
 
-    /// <summary>이 타입 파라미터가 [GenericMessage] 타입 인자 위치에 쓰였다면 그 메시지 선언을 돌려준다.</summary>
+    /// <summary>Returns the message declaration if this type parameter is used in a [GenericMessage] type-argument position.</summary>
     static INamedTypeSymbol? SlotUsedAsGenericMessageArgument(IMethodSymbol method, ITypeParameterSymbol typeParameter, AttributeReferences references)
     {
         foreach (ITypeSymbol? usage in method.Parameters.Select(static p => p.Type)
@@ -186,7 +188,7 @@ internal sealed class GenericMethodMetadata
         return null;
     }
 
-    /// <summary>Package&lt;T&gt; 처럼 슬롯이 [GenericMessage] 타입 인자로만 쓰이는 경우, 그 구성 선언에서 허용 집합을 얻는다.</summary>
+    /// <summary>For slots used only as a [GenericMessage] type argument (like Package&lt;T&gt;), derives the allowed set from that message's construction declarations.</summary>
     static bool TryDeriveFromGenericMessage(
         IMethodSymbol method,
         ITypeParameterSymbol typeParameter,
@@ -215,7 +217,7 @@ internal sealed class GenericMethodMetadata
                 continue;
             }
 
-            // 그 메시지의 구성 선언([GenericMessage(typeof(X&lt;타입&gt;), …)])을 읽는다.
+            // Read the message's construction declarations ([GenericMessage(typeof(X<...>), ...)]).
             for (int position = 0; position < named.TypeArguments.Length; position++)
             {
                 if (!SymbolEqualityComparer.Default.Equals(named.TypeArguments[position], typeParameter))
@@ -245,7 +247,7 @@ internal sealed class GenericMethodMetadata
         return true;
     }
 
-    /// <summary>오도미터(마지막 슬롯이 가장 빨리 돈다). 슬롯 0 이 가장 느리게 도는 행 우선 순서.</summary>
+    /// <summary>Odometer (last slot spins fastest). Row-major order with slot 0 slowest.</summary>
     static IEnumerable<ITypeSymbol[]> Cartesian(IReadOnlyList<ITypeSymbol>[] slots)
     {
         int[] index = new int[slots.Length];

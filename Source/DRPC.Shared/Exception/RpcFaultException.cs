@@ -1,16 +1,18 @@
 namespace DRPC.Shared;
 
 /// <summary>
-/// 피어가 보낸 RPC 오류 응답(<see cref="Message.RpcErrorCode"/>). 호출 측은 await 시 이 예외로 관찰한다.
+/// An RPC error response sent by the peer (<see cref="Message.RpcErrorCode"/>). The calling side
+/// observes this exception when awaiting the call.
 /// </summary>
 public sealed class RpcFaultException : SystemException
 {
-    /// <summary>오류가 발생한 호출의 CallId.</summary>
+    /// <summary>The CallId of the call that produced the fault.</summary>
     public uint CallId { get; }
 
-    /// <summary><see cref="Message.RpcErrorCode"/> 값.</summary>
+    /// <summary>The <see cref="Message.RpcErrorCode"/> value reported by the remote side.</summary>
     public int ErrorCode { get; }
 
+    /// <summary>Initializes the exception with the faulting call's id, the remote error code, and the message.</summary>
     public RpcFaultException(uint callId, int errorCode, string message)
         : base(message)
     {

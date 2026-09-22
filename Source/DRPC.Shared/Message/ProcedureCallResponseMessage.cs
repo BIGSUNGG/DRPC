@@ -2,19 +2,22 @@ using MessageProtocol;
 
 namespace DRPC.Shared.Message;
 
-/// <summary>RPC 성공 응답. 요청의 CallId 를 그대로 되돌린다.</summary>
+/// <summary>RPC success response. Echoes the request's CallId.</summary>
 [MessageProtocol.Message(MessageProtocol.MessageKind.Standalone, 1, MessageProtocol.MessageCategory.Category1)]
 public partial class ProcedureCallResponseMessage
 {
+    /// <summary>The CallId echoed from the request.</summary>
     public uint CallId { get; private set; }
 
-    /// <summary>직렬화된 반환 값 페이로드. 반환이 void 이면 빈 배열.</summary>
+    /// <summary>Serialized return-value payload. Empty when the method returns void.</summary>
     public byte[] ReturnData { get; private set; } = System.Array.Empty<byte>();
 
+    /// <summary>Creates an empty message (required by the wire deserializer).</summary>
     public ProcedureCallResponseMessage()
     {
     }
 
+    /// <summary>Creates a success response for the given call.</summary>
     public ProcedureCallResponseMessage(uint callId, byte[] returnData)
     {
         CallId = callId;

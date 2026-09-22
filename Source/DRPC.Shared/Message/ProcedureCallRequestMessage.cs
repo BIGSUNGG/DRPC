@@ -2,23 +2,25 @@ using MessageProtocol;
 
 namespace DRPC.Shared.Message;
 
-/// <summary>RPC 요청. 응답을 기다리는 호출과 one-way 호출이 같은 메시지를 쓴다(one-way 은 <see cref="CallId"/> 가 0).</summary>
+/// <summary>RPC request. Calls that wait for a response and one-way calls share this message (one-way has <see cref="CallId"/> of 0).</summary>
 [MessageProtocol.Message(MessageProtocol.MessageKind.Standalone, 0, MessageProtocol.MessageCategory.Category1)]
 public partial class ProcedureCallRequestMessage
 {
-    /// <summary>호출 식별자. 0이면 one-way(응답 없음).</summary>
+    /// <summary>Call identifier. 0 means one-way (no response).</summary>
     public uint CallId { get; private set; }
 
-    /// <summary><c>[RemoteProcedure]</c> 의 MethodId.</summary>
+    /// <summary>The <c>[RemoteProcedure]</c> MethodId.</summary>
     public int MethodId { get; private set; }
 
-    /// <summary>직렬화된 매개변수 페이로드. 매개변수가 없으면 빈 배열.</summary>
+    /// <summary>Serialized parameter payload. Empty when the call has no parameters.</summary>
     public byte[] ParameterData { get; private set; } = System.Array.Empty<byte>();
 
+    /// <summary>Creates an empty message (required by the wire deserializer).</summary>
     public ProcedureCallRequestMessage()
     {
     }
 
+    /// <summary>Creates a request message for the given call.</summary>
     public ProcedureCallRequestMessage(uint callId, int methodId, byte[] parameterData)
     {
         CallId = callId;

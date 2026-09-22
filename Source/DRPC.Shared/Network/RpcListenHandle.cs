@@ -1,7 +1,8 @@
 namespace DRPC.Shared.Network;
 
 /// <summary>
-/// 서버 리스닝 수명 핸들. <see cref="Dispose"/> 시 리스너를-stop 하고 등록한 peer 허브를 정리한다.
+/// Server listening lifetime handle. On <see cref="Dispose"/>, stops the listener and cleans up the
+/// registered peer hubs.
 /// </summary>
 public sealed class RpcListenHandle : IAsyncDisposable, IDisposable
 {
@@ -10,6 +11,7 @@ public sealed class RpcListenHandle : IAsyncDisposable, IDisposable
     readonly Func<int>? _activeConnectionCount;
     int _disposed;
 
+    /// <summary>Creates a handle from an optional stop action, cancellation source, and connection-count probe.</summary>
     public RpcListenHandle(Action? stop, CancellationTokenSource? linkedCts = null,
         Func<int>? activeConnectionCount = null)
     {
@@ -19,16 +21,19 @@ public sealed class RpcListenHandle : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// 현재 수락된 peer 허브 수(형제 제안 P4 운영 신호). 수락 시 증가·끊김 시 감소하며
-    /// 서버 포화·연결 상한(<c>MaxConnections</c>)의 근사 지표로 쓴다.
+    /// The number of currently accepted peer hubs (sibling proposal P4 operational signal). Increases on
+    /// accept and decreases on disconnect; a rough indicator of server saturation against the connection
+    /// cap (<c>MaxConnections</c>).
     /// </summary>
     public int ActiveConnectionCount => _activeConnectionCount?.Invoke() ?? 0;
 
     /// <summary>
-    /// 리스닝 루프에 대응하는 Task. Dispose 와 별개로 await 할 수 있고, 중지·취소 시 반드시 완료된다.
+    /// The Task corresponding to the listening loop. Awaitable independently of <see cref="Dispose"/>;
+    /// it always completes on stop or cancellation.
     /// </summary>
     public Task? ListenTask { get; init; }
 
+    /// <summary>Stops the listener and releases the linked cancellation source.</summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -42,7 +47,7 @@ public sealed class RpcListenHandle : IAsyncDisposable, IDisposable
         }
         catch
         {
-            // 취소 요구 실패는 정리를 막지 않는다.
+            // A failed cancel request must not block cleanup.
         }
 
         try
@@ -51,12 +56,13 @@ public sealed class RpcListenHandle : IAsyncDisposable, IDisposable
         }
         catch
         {
-            // 정리 중 예외는 호출자에게 전파하지 않는다.
+            // Exceptions during cleanup must not propagate to the caller.
         }
 
         _linkedCts?.Dispose();
     }
 
+    /// <summary>Async counterpart of <see cref="Dispose"/>; completes synchronously.</summary>
     public ValueTask DisposeAsync()
     {
         Dispose();

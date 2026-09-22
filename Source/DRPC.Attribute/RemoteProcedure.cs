@@ -1,54 +1,60 @@
 namespace DRPC;
 
 /// <summary>
-/// 인터페이스 메서드를 RPC 계약으로 표시한다. 소스 생성기(DRPC.CodeGenerator)가 이 특성으로
-/// 호출 스텁과 수신 디스패치를 생성하므로, 사용자는 전송·직렬화 코드를 직접 쓰지 않는다.
+/// Marks an interface method as an RPC contract. The source generator (DRPC.CodeGenerator) uses this
+/// attribute to generate call stubs and inbound dispatch, so you never write transport or
+/// serialization code by hand.
 /// </summary>
 /// <example>
 /// <code>
-/// [RemoteProcedure]                          // 기본 ReliableOrdered
+/// [RemoteProcedure]                          // default ReliableOrdered
 /// int Add(int a, int b);
 ///
 /// [RemoteProcedure(RpcDeliveryMode.Unreliable, 7)]
-/// void SetPosition(float x, float y);        // 전송 방식 Overrides
+/// void SetPosition(float x, float y);        // overrides the delivery mode
 ///
 /// [RemoteProcedure(RpcDeliveryMode.ReliableUnordered, 8, OneWay = true)]
-/// void Chat(string text);                    // 응답 없는 one-way
+/// void Chat(string text);                    // one-way: no response
 /// </code>
 /// </example>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class RemoteProcedure : System.Attribute
 {
-    /// <summary>이 메서드의 전송 방식. 기본값은 <see cref="RpcDeliveryMode.ReliableOrdered"/>.</summary>
+    /// <summary>The delivery mode for this method. Defaults to <see cref="RpcDeliveryMode.ReliableOrdered"/>.</summary>
     public RpcDeliveryMode Mode { get; }
 
     /// <summary>
-    /// 와이어에서 메서드를 식별하는 번호. 생략(기본 -1)하면 인터페이스 FQN·메서드명·매개변수 시그니처의
-    /// FNV-1a 해시로 자동 할당된다 — 선언 순서와 무관하게 이름이 같으면 항상 같은 값이다.
-    /// 해시 충돌(같은 선언 안 중복 MethodId)은 DRPCGEN005 컴파일 에러로 차단된다.
+    /// The number identifying the method on the wire. When omitted (default -1), it is assigned
+    /// automatically as the FNV-1a hash of the interface FQN, method name, and parameter signature —
+    /// the same name always yields the same value regardless of declaration order.
+    /// Hash collisions (duplicate MethodId within one declaration) are blocked with compile error DRPCGEN005.
     /// </summary>
     public int MethodId { get; }
 
-    /// <summary>true이면 요청만 보내고 응답을 기다리지/보내지 않는다. 반환 타입은 void 여야 한다.</summary>
+    /// <summary>When true, only the request is sent and no response is awaited or sent back. The return type must be void.</summary>
     public bool OneWay { get; set; }
 
     /// <summary>
-    /// true이면 디스패치가 <c>_Implementation</c> 호출 전에 <c>_Validate</c> 를 먼저 기다린다.
-    /// <c>_Validate</c> 는 사용자가 partial 로 구현하는 <c>Task&lt;bool&gt;</c> 메서드(매개변수 원본과 동일)이고,
-    /// true를 반환해야만 <c>_Implementation</c> 이 호출된다. false면 구현을 호출하지 않고
-    /// <c>RpcErrorCode.ValidationFailed</c>(7) 오류 응답을 보낸다(one-way 는 조용히 스킵).
-    /// 미구현 시 컴파일 에러가 난다(fail-closed).
+    /// When true, dispatch awaits <c>_Validate</c> before invoking <c>_Implementation</c>.
+    /// <c>_Validate</c> is a <c>Task&lt;bool&gt;</c> method you implement in a partial class (same parameters
+    /// as the original); <c>_Implementation</c> runs only if it returns true. On false, a
+    /// <c>RpcErrorCode.ValidationFailed</c> (7) error response is sent without invoking the
+    /// implementation (one-way calls skip silently). A missing implementation is a compile error
+    /// (fail-closed).
     /// </summary>
     public bool Validation { get; set; }
 
     /// <summary>
-    /// 이 호출의 응답 대기 상한(밀리초). 기본 -1이면 허브 기본값(<c>HubBase.RpcTimeout</c>)을 따른다.
-    /// 양수면 이 호출에만 그 예산이 적용된다 — 느린 배치 호출에만 넉넉한 상한을 주고 나머지는 허브 기본으로
-    /// 지키게 하는 용도(호출별 타임아웃 정책). one-way 호출은 응답을 기다리지 않으므로 무의미하다(DRPCGEN011 경고).
-    /// 0 이하(-1 제외)는 생성기 진단 DRPCGEN010 으로 거부된다.
+    /// The maximum wait for this call's response, in milliseconds. The default -1 follows the hub
+    /// default (<c>HubBase.RpcTimeout</c>). A positive value applies that budget to this call only —
+    /// useful for giving slow batch calls a generous limit while everything else sticks to the hub
+    /// default (per-call timeout policy). One-way calls never wait for a response, so this is
+    /// meaningless for them (DRPCGEN011 warning). Values of 0 or below (except -1) are rejected by
+    /// generator diagnostic DRPCGEN010.
     /// </summary>
     public int TimeoutMs { get; set; } = -1;
 
+    /// <summary>Initializes the attribute with an optional delivery mode and wire method id.</summary>
     public RemoteProcedure(
         RpcDeliveryMode mode = RpcDeliveryMode.ReliableOrdered,
         int methodId = -1)

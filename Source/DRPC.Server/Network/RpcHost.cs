@@ -6,12 +6,22 @@ using DRPC.Shared.Network;
 namespace DRPC.Server.Network;
 
 /// <summary>
-/// RUDP 리스너 수명. 생성된 <c>{Hub}.ListenAsync</c> 가 이 메서드를 부른다.
-/// peer 마다 허브를 1개 만들고, 중지 시 리스너와 peer 허브를 함께 정리한다.
+/// Owns the RUDP listener lifetime. The generated <c>{Hub}.ListenAsync</c> calls these
+/// methods. Creates one hub per peer and, on stop, disposes the listener together with all
+/// peer hubs.
 /// </summary>
 public static class RpcHost
 {
-    /// <exception cref="InvalidOperationException">바인딩 실패·이미 시작된 리스너.</exception>
+    /// <summary>
+    /// Starts listening on <paramref name="port"/> and creates one hub per accepted peer.
+    /// Uses the transport stack defaults (unlimited concurrent connections, default connect timeout).
+    /// </summary>
+    /// <param name="port">Port to bind.</param>
+    /// <param name="connectionKey">Shared connection key, or null for none. Both endpoints must agree.</param>
+    /// <param name="hubFactory">Creates a hub for each accepted channel.</param>
+    /// <param name="onConnected">Optional callback invoked per hub after acceptance.</param>
+    /// <param name="cancellationToken">Cancels starting the listener.</param>
+    /// <exception cref="InvalidOperationException">Bind failed or a listener is already running.</exception>
     public static Task<RpcListenHandle> ListenAsync<THub>(
         int port,
         string? connectionKey,
@@ -22,11 +32,19 @@ public static class RpcHost
         => ListenAsync(port, 0, connectionKey, hubFactory, onConnected, cancellationToken);
 
     /// <summary>
-    /// <paramref name="maxConnections"/> 가 양수면 동시 수락 연결 수 상한(연결 고갈 공격 방어 — 상한 도달 시
-    /// 접속 요청은 즉시 거부되고 수락은 계속된다). 0이면(기본) 무제한.
+    /// When <paramref name="maxConnections"/> is positive, caps concurrently accepted
+    /// connections (protection against connection-exhaustion attacks — once the cap is hit,
+    /// new connection attempts are rejected immediately while accepting continues).
+    /// 0 (default) means unlimited.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxConnections"/> 가 음수.</exception>
-    /// <exception cref="InvalidOperationException">바인딩 실패·이미 시작된 리스너.</exception>
+    /// <param name="port">Port to bind.</param>
+    /// <param name="maxConnections">Maximum concurrent accepted connections; 0 for unlimited.</param>
+    /// <param name="connectionKey">Shared connection key, or null for none. Both endpoints must agree.</param>
+    /// <param name="hubFactory">Creates a hub for each accepted channel.</param>
+    /// <param name="onConnected">Optional callback invoked per hub after acceptance.</param>
+    /// <param name="cancellationToken">Cancels starting the listener.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxConnections"/> is negative.</exception>
+    /// <exception cref="InvalidOperationException">Bind failed or a listener is already running.</exception>
     public static Task<RpcListenHandle> ListenAsync<THub>(
         int port,
         int maxConnections,
@@ -46,11 +64,17 @@ public static class RpcHost
     }
 
     /// <summary>
-    /// <see cref="RpcEndpointOptions"/> 로 전송 옵션(키·연결 상한·CRC32c 무결성 등)을 일괄 지정한다.
-    /// CRC32c 는 양단 모두 같은 설정이어야 한다(와이어 비호환).
+    /// Specifies transport options (key, connection cap, CRC32c integrity, etc.) in bulk via
+    /// <see cref="RpcEndpointOptions"/>. Both endpoints must use the same CRC32c setting
+    /// (wire incompatibility otherwise).
     /// </summary>
-    /// <exception cref="ArgumentNullException"><paramref name="endpointOptions"/> 가 null.</exception>
-    /// <exception cref="InvalidOperationException">바인딩 실퍽·이미 시작된 리스너.</exception>
+    /// <param name="port">Port to bind.</param>
+    /// <param name="endpointOptions">Transport options to apply.</param>
+    /// <param name="hubFactory">Creates a hub for each accepted channel.</param>
+    /// <param name="onConnected">Optional callback invoked per hub after acceptance.</param>
+    /// <param name="cancellationToken">Cancels starting the listener.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="endpointOptions"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">Bind failed or a listener is already running.</exception>
     public static Task<RpcListenHandle> ListenWithOptionsAsync<THub>(
         int port,
         RpcEndpointOptions endpointOptions,
@@ -87,8 +111,9 @@ public static class RpcHost
             peers.TryAdd(hub, 0);
             hub.Disconnected += () => peers.TryRemove(hub, out _);
 
-            // 수용→구독 창구에 단절된 피어(세션 생성 중 끊김)는 끊김 이벤트를 못 받는다(허브 수명당 1회 발화) —
-            // 즉시 회수하지 않으면 Stop 까지 peers 에 남아 ActiveConnectionCount 를 부풀린다.
+            // A peer that died in the accept→subscribe window (dropped mid session setup)
+            // never gets a disconnect event (fires once per hub lifetime). If not evicted here
+            // it lingers in peers until Stop, inflating ActiveConnectionCount.
             if (hub.IsDisconnected)
             {
                 peers.TryRemove(hub, out _);
@@ -109,8 +134,9 @@ public static class RpcHost
                 }
                 catch (Exception e)
                 {
-                    // 접속 콜백 예외는 수신 경로를 죽이지 않는다(콘솔 의존 금지 — Trace 로만 남긴다).
-                    System.Diagnostics.Trace.TraceError($"onConnected 예외: {e}");
+                    // A connect-callback exception must not kill the receive path
+                    // (no console dependency — trace only).
+                    System.Diagnostics.Trace.TraceError($"onConnected callback threw: {e}");
                 }
             }
         };
@@ -140,7 +166,7 @@ public static class RpcHost
 
         var handle = new RpcListenHandle(Stop, linkedCts, () => peers.Count) { ListenTask = stopped.Task };
 
-        // 취소로도 중지가 관찰돼야 한다(ListenTask 가 영구 미완료로 남지 않도록).
+        // Stop must also be observable through cancellation (so ListenTask never stays incomplete forever).
         linkedCts.Token.Register(static state => ((Action)state!).Invoke(), new Action(Stop), useSynchronizationContext: false);
 
         return Task.FromResult(handle);

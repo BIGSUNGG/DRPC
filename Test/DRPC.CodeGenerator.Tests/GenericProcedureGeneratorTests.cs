@@ -4,8 +4,8 @@ using Xunit;
 namespace DRPC.CodeGenerator.Tests;
 
 /// <summary>
-/// 제네릭 프로시저([GenericProcedure]) 생성·진단 검사.
-/// 와이어 계약: 페이로드 첫 4바이트 = 구성 인덱스(데카르트 곱, 슬롯 0이 가장 느리게 도는 순서).
+/// Generic procedure ([GenericProcedure]) generation and diagnostic tests.
+/// Wire contract: the first 4 payload bytes = construction index (Cartesian product, slot 0 cycling slowest).
 /// </summary>
 public class GenericProcedureGeneratorTests
 {
@@ -63,7 +63,7 @@ public class GenericProcedureGeneratorTests
                 private partial Task<T> GetDefault_Implementation<T>() => Task.FromResult<T>(default!);
                 """));
 
-        // 구성별 케이스마다 닫힌 타입 인수로 게이트가 붙고, 열림 제네릭 partial 선언이 한 번 따라온다.
+        // Each construction gets a gate with closed type arguments, followed once by the open-generic partial declaration.
         Assert.Contains("if (!await GetDefault_Validate<global::System.Int32>().ConfigureAwait(false))", result.GeneratedSource);
         Assert.Contains("if (!await GetDefault_Validate<global::System.String>().ConfigureAwait(false))", result.GeneratedSource);
         Assert.Contains("throw new global::DRPC.Shared.RpcValidationFailedException(\"GetDefault\");", result.GeneratedSource);
@@ -82,22 +82,22 @@ public class GenericProcedureGeneratorTests
             T1 Pick<T1, T2>(T2 low, T2 high);
             """;
 
-        // typeof 디스패치 암(arm)은 호출 쪽(클라이언트 허브의 outgoing 스텁)에 나온다.
+        // The typeof dispatch arms appear on the calling side (the client hub's outgoing stubs).
         var client = GeneratorHarness.Run(GeneratorHarness.ClientHub(contract));
 
         Assert.Empty(client.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
-        // 4구성(슬롯 0이 느리게): (int,float)(int,double)(string,float)(string,double).
+        // 4 constructions (slot 0 cycles slowest): (int,float)(int,double)(string,float)(string,double).
         Assert.Contains("typeof(T1) == typeof(global::System.Int32) && typeof(T2) == typeof(global::System.Single)", client.GeneratedSource);
         Assert.Contains("typeof(T1) == typeof(global::System.String) && typeof(T2) == typeof(global::System.Double)", client.GeneratedSource);
         Assert.Contains("__WriteReturn_ITestServerProcedures_Pick_3", client.GeneratedSource);
 
-        // 구성별 닫힌 구현 호출·partial 서명은 수신 쪽(서버 허브)에 나온다.
+        // Per-construction closed implementation calls and the partial signature appear on the receiving side (the server hub).
         var server = GeneratorHarness.Run(GeneratorHarness.ServerHub(contract,
             hubBody: "private partial Task<T1> Pick_Implementation<T1, T2>(T2 low, T2 high) => Task.FromResult<T1>(default!);"));
 
         Assert.Empty(server.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
         Assert.Contains("await Pick_Implementation<global::System.Int32, global::System.Single>(low, high)", server.GeneratedSource);
-        // 구현 partial 서명에 타입 파라미터가 붙는다.
+        // The implementation partial signature carries the type parameters.
         Assert.Contains("private partial global::System.Threading.Tasks.Task<T1> Pick_Implementation<T1, T2>(T2 low, T2 high);", server.GeneratedSource);
     }
 
@@ -144,15 +144,15 @@ public class GenericProcedureGeneratorTests
 
         Assert.Empty(result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
         Assert.Contains("if (typeof(T) == typeof(global::Payload))", result.GeneratedSource);
-        // 닫힌 Package<Payload> 는 ID 헤더(object dispatch) 직렬화를 쓴다.
+        // The closed Package<Payload> uses ID-headered (object dispatch) serialization.
         Assert.Contains("MessageSerializer.SerializeToWriter", result.GeneratedSource);
     }
 
     [Fact]
     public void DRPCGEN009_when_generic_message_slot_type_is_not_a_message()
     {
-        // MessageProtocol 은 [GenericMessage] 의 T 멤버를 런타임 메시지 디스패치로 직렬화한다 —
-        // int/string 같은 비메시지 타입은 구성 자체가 무효(런타임 크래시를 컴파일 타임 승격).
+        // MessageProtocol serializes [GenericMessage] T members via runtime message dispatch —
+        // non-message types like int/string make the configuration itself invalid (a runtime crash promoted to compile time).
         string source = GeneratorHarness.ClientHub(
                 """
                 [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 10)]
@@ -176,7 +176,7 @@ public class GenericProcedureGeneratorTests
     [Fact]
     public void Generic_contract_with_implementations_compiles()
     {
-        // 클라이언트 허브가 구현하는 건 클라이언트 계약(Echo). GetDefault 는 서버 계약(송신 스텁만)이다.
+        // What the client hub implements is the client contract (Echo). GetDefault is the server contract (send stub only).
         string source = GeneratorHarness.ClientHub(
             """
             [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 7)]
@@ -198,7 +198,7 @@ public class GenericProcedureGeneratorTests
         Assert.Empty(result.CompileErrors());
     }
 
-    // ── 진단 ───────────────────────────────────────────────────────────
+    // ── Diagnostics ───────────────────────────────────────────────────────────
 
     [Fact]
     public void DRPCGEN007_when_generic_parameter_is_undeclared()

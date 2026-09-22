@@ -1,26 +1,26 @@
 namespace DRPC.Shared.Message;
 
-/// <summary>RPC 오류 코드(와이어 값). 오류 응답의 <c>ErrorCode</c> 에 실린다.</summary>
+/// <summary>RPC error codes (wire values). Carried in the error response's <c>ErrorCode</c>.</summary>
 public static class RpcErrorCode
 {
-    /// <summary>구현(body)에서 예외가 발생함.</summary>
+    /// <summary>The implementation (body) threw an exception.</summary>
     public const int Unhandled = 1;
 
-    /// <summary>등록되지 않은 MethodId 요청.</summary>
+    /// <summary>Request for an unregistered MethodId.</summary>
     public const int UnknownMethod = 2;
 
-    /// <summary>응답 대기 상한(<c>HubBase.RpcTimeout</c>) 초과. 호출 측에서 생성한다.</summary>
+    /// <summary>The response wait limit (<c>HubBase.RpcTimeout</c>) was exceeded. Generated on the calling side.</summary>
     public const int Timeout = 3;
 
-    /// <summary>대기 중 연결 끊김. 호출 측에서 생성한다.</summary>
+    /// <summary>The connection dropped while a call was pending. Generated on the calling side.</summary>
     public const int Disconnected = 4;
 
-    /// <summary>Incoming 처리가 <c>MaxConcurrentIncoming</c> 상한을 초과함.</summary>
+    /// <summary>Incoming processing exceeded the <c>MaxConcurrentIncoming</c> limit.</summary>
     public const int Overloaded = 5;
 
-    /// <summary><c>HubBase.AuthorizeRequestAsync</c> 가 요청을 거부함(호출 권한 없음).</summary>
+    /// <summary><c>HubBase.AuthorizeRequestAsync</c> rejected the request (no permission to call).</summary>
     public const int PermissionDenied = 6;
 
-    /// <summary><c>_Validate</c> 가 false 를 반환해 <c>_Implementation</c> 호출을 거부함.</summary>
+    /// <summary><c>_Validate</c> returned false, rejecting the <c>_Implementation</c> call.</summary>
     public const int ValidationFailed = 7;
 }

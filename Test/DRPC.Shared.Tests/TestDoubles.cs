@@ -7,7 +7,7 @@ using DRPC.Shared.Network;
 namespace DRPC.Shared.Tests;
 
 /// <summary>
-/// 전송 스택 없이 Hub 런타임만 검증하기 위한 메모리 세션. 보낸 메시지를 순서대로 기록한다.
+/// Memory session for exercising only the Hub runtime, with no transport stack. Records sent messages in order.
 /// </summary>
 internal sealed class FakeSession : ISession
 {
@@ -51,7 +51,7 @@ internal sealed class FakeSession : ISession
     }
 }
 
-/// <summary>HubBase 의 protected 표면(SendRPC/RequestRPC, 등록 딕셔너리)을 테스트에 노출한다.</summary>
+/// <summary>Exposes HubBase's protected surface (SendRPC/RequestRPC, registration dictionaries) to tests.</summary>
 internal sealed class TestHub : HubBase
 {
     public TestHub(ISession session)
@@ -66,7 +66,7 @@ internal sealed class TestHub : HubBase
         MethodDeliveryModes[methodId] = mode;
     }
 
-    /// <summary>권한 검증 훅 주입 — 미설정이면 기본(전부 허용)을 따른다.</summary>
+    /// <summary>Authorization hook injection — when unset, the default (allow all) applies.</summary>
     public Func<int, Task<bool>>? AuthorizeHandler { get; set; }
 
     protected override Task<bool> AuthorizeRequestAsync(int methodId)
@@ -83,6 +83,6 @@ internal sealed class TestHub : HubBase
         CancellationToken cancellationToken = default)
         => base.RequestRPC(methodId, parameterData, mode, timeout, cancellationToken);
 
-    /// <summary>fire-and-forget 디스패치 태스크를 관측한다 — 방화벽 흡수 여부 검증용.</summary>
+    /// <summary>Observes the fire-and-forget dispatch task — for verifying firewall absorption.</summary>
     public Task DispatchForTest(ProcedureCallRequestMessage message) => ProcessRequestAsync(message);
 }

@@ -3,10 +3,23 @@ project: DS_RPC
 type: meta
 status: stable
 tags: [meta, changelog]
-updated: 2026-09-14
+updated: 2026-09-22
 ---
 
 # Changelog
+
+## 2026-09-22 — v3.5.1 (release)
+
+- **주석 영어화 릴리스(patch)** — 활성 코드 52개 .cs 파일 주석 전면 영어화·공개 API XML doc 전수(61개 public 선언)·한글 예외 메시지 영어화. 런타임 API·와이어 무변화, 사용자 가시 변경은 예외 메시지 텍스트뿐. 리뷰 게이트 review-until-clean 2라운드 통과(1: ISSUES 5건 → 수정, 2: CLEAN).
+- 버전 3.5.0 → 3.5.1 범프(전 5패키지). 로컬 게이트 통과: 솔루션 전체 빌드 오류 0 + 144 테스트(52/52/40). 태그 v3.5.1 푸시 → NuGet Publish 워크플로 5패키지 게시.
+
+## 2026-09-22 — 코드 주석 전면 영어화 + 공개 API XML doc 전수 작성
+
+- **활성 코드 52개 .cs 파일의 모든 주석을 영어로 재작성**(Source/ 5개 패키지, Sandbox/ 3개, Test/ 4개 프로젝트; Legacy/ 제외). 공개 API XML doc은 DRPC 라이브러리 소비자(Unity/.NET 개발자) 관점(IntelliSense)에서 재작성하고, 미문서 공개 API에 XML doc 신규 작성 — Source 5개 패키지 public 타입·멤버 61곳 전부 `<summary>` 확보(커버리지 스캔 확인). 내부 주석은 what보다 why(스레드 안전성·프로토콜 제약·fail-closed 근거)가 드러나게 정비. 기준: Microsoft XML doc 권장 태그·why-not-what 원칙 사전 조사.
+- 예외 메시지 등 코드 내 한글 문자열 리터럴도 영어화(예: "알 수 없는 RpcDeliveryMode 입니다." → "Unknown RpcDeliveryMode value.") — 관련 테스트 assertion도 함께 갱신. 코드 로직·공개 API 시그니처 무변화(diff 정규화 비교로 순수 코드 변화 0건 확인).
+- **review-until-clean 검토 경과**: 라운드 1 **ISSUES** 5건(Generate() 반환 계약 오류 기술 [반드시], Sequenced 문구 불일치·생성 허브 문서 모호·RpcPayload 빈 줄·CONVENTIONS 규칙 미반영 [권장]) → 반드시 1건+권장 3건 수정. Sequenced는 형제 저장소 DS_Communication `RudpDeliveryMethod` 원전(unreliable·ordered — 유실 패킷은 스킵되고 이후 메시지도 도착) 대조로 두 문구 정합. 라운드 2 **CLEAN**.
+- 검증: 활성 코드(Source+Sandbox+Test) 한글 스캔 0건 · `dotnet build DRPC.slnx -c Release` 오류 0 · `dotnet test` 144/144 통과 · XML doc 커버리지 스캔 누락 0건. 리뷰 수정 과정에서 정리된 빌드 경고: CS1570(XML 형식 오류) 8건·CS0419(모호 cref) 1건 해소(경고 11→3, 잔여 3건은 주석 무관 기존 코드 경고).
+- 후속 권고(범위 밖으로 미수행): `Document/00-AI/CONVENTIONS.md`에 "코드 주석·공개 API XML doc은 영어로 작성" 규칙 추가.
 
 ## 2026-09-14 — v3.5.0 (release)
 

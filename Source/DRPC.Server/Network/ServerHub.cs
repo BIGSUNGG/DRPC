@@ -5,12 +5,13 @@ using DRPC.Shared.Network;
 namespace DRPC.Server.Network;
 
 /// <summary>
-/// 서버가 peer 마다 상속하는 허브 베이스(ADR-0001: 소유 주체 = 서버).
-/// 생성된 partial 파생 타입은 <c>ListenAsync</c> 와 클라이언트 계약(<typeparamref name="TCPD"/>)의 outgoing 스텁,
-/// 서버 계약(<typeparamref name="TSPD"/>)의 incoming 디스패치를 얻는다.
+/// Hub base inherited once per peer on the server (ADR-0001: owner = server).
+/// The generated partial derivative supplies <c>ListenAsync</c>, outgoing stubs for the
+/// client contract (<typeparamref name="TCPD"/>), and incoming dispatch for the server
+/// contract (<typeparamref name="TSPD"/>).
 /// </summary>
-/// <typeparam name="TSPD">서버가 구현하는 함수 선언 인터페이스.</typeparam>
-/// <typeparam name="TCPD">클라이언트가 구현하는 함수 선언 인터페이스.</typeparam>
+/// <typeparam name="TSPD">Function-declaration interface implemented by the server.</typeparam>
+/// <typeparam name="TCPD">Function-declaration interface implemented by the client.</typeparam>
 public abstract class ServerHub<TSPD, TCPD> : HubBase<TSPD, TCPD>
     where TSPD : IServerProcedureDeclarations
     where TCPD : IClientProcedureDeclarations

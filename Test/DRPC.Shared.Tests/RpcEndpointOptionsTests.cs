@@ -5,7 +5,7 @@ using Xunit;
 namespace DRPC.Shared.Tests;
 
 /// <summary>
-/// RpcEndpointOptions.ToTransportOptions 계약 — 접속 키·타임아웃·상한·CRC32c 매핑과 기본값·음수 거부(Communication 2.2.1 채택).
+/// RpcEndpointOptions.ToTransportOptions contract — connection key, timeout, cap, and CRC32c mapping, plus defaults and negative-value rejection (Communication 2.2.1 adoption).
 /// </summary>
 public class RpcEndpointOptionsTests
 {

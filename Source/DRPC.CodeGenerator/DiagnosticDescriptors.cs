@@ -6,6 +6,7 @@ internal static class DiagnosticDescriptors
 {
     const string Category = "DRPC";
 
+    /// <summary>DRPCGEN001: the hub type must be declared partial.</summary>
     public static readonly DiagnosticDescriptor MustBePartial = new(
         id: "DRPCGEN001",
         title: "DRPC hub type must be partial",
@@ -14,6 +15,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN002: the hub must inherit ClientHub&lt;,&gt; or ServerHub&lt;,&gt;.</summary>
     public static readonly DiagnosticDescriptor InvalidHubBase = new(
         id: "DRPCGEN002",
         title: "DRPC hub must inherit ClientHub or ServerHub",
@@ -22,6 +24,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN003: a contract parameter/return type is not payload-serializable.</summary>
     public static readonly DiagnosticDescriptor UnsupportedType = new(
         id: "DRPCGEN003",
         title: "DRPC contract type not supported",
@@ -30,6 +33,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN005: the same MethodId is declared more than once.</summary>
     public static readonly DiagnosticDescriptor DuplicateMethodId = new(
         id: "DRPCGEN005",
         title: "DRPC MethodId is duplicated",
@@ -38,6 +42,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN006: OneWay=true requires a void return.</summary>
     public static readonly DiagnosticDescriptor OneWayRequiresVoid = new(
         id: "DRPCGEN006",
         title: "DRPC OneWay requires void return",
@@ -46,6 +51,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN007: a generic type parameter lacks an allowed-type declaration.</summary>
     public static readonly DiagnosticDescriptor GenericDeclarationMissing = new(
         id: "DRPCGEN007",
         title: "DRPC generic procedure type parameter is not declared",
@@ -54,6 +60,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN008: a call-site type argument is not declared for the generic procedure.</summary>
     public static readonly DiagnosticDescriptor GenericTypeArgumentNotDeclared = new(
         id: "DRPCGEN008",
         title: "DRPC generic procedure type argument is not declared",
@@ -62,6 +69,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN009: the generic procedure declaration itself is malformed or contradictory.</summary>
     public static readonly DiagnosticDescriptor GenericDeclarationInvalid = new(
         id: "DRPCGEN009",
         title: "DRPC generic procedure declaration is invalid",
@@ -70,6 +78,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN010: TimeoutMs must be positive or -1 (inherit).</summary>
     public static readonly DiagnosticDescriptor InvalidTimeoutMs = new(
         id: "DRPCGEN010",
         title: "DRPC TimeoutMs is invalid",
@@ -78,6 +87,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    /// <summary>DRPCGEN011: TimeoutMs has no effect on OneWay calls (warning).</summary>
     public static readonly DiagnosticDescriptor TimeoutOnOneWay = new(
         id: "DRPCGEN011",
         title: "DRPC TimeoutMs has no effect on OneWay",

@@ -11,8 +11,8 @@ using Xunit;
 namespace DRPC.E2E.Tests;
 
 /// <summary>
-/// 실제 RUDP(127.0.0.1) 왕복 검증. 전송 방식·OneWay·역호출·오류 경로를 와이어 위에서 확인한다.
-/// 테스트마다 다른 포트를 써서 병렬 실행을 안전하게 한다.
+/// Roundtrip verification over real RUDP (127.0.0.1). Exercises delivery modes, OneWay, callbacks, and error paths on the wire.
+/// Each test uses a different port to keep parallel execution safe.
 /// </summary>
 public class RudpLoopbackTests
 {
@@ -20,8 +20,8 @@ public class RudpLoopbackTests
 
     static int NextPort()
     {
-        // OS 가 배정한 임시 포트를 쓴다 — 고정 시드(9600…)는 Windows 예약 포트 범위·선행 실행 잔여 리스너와 충돌해
-        // "리스너 바인딩 실패" 플레이크를 일으켰다. 확보-해제-재바인드 사이 미세 경쟁은 감수한다.
+        // Use an OS-assigned ephemeral port — a fixed seed (9600…) collided with Windows reserved port ranges and leftover
+        // listeners from earlier runs, causing "listener bind failed" flakes. The tiny race between probe-close and rebind is accepted.
         using var probe = new System.Net.Sockets.UdpClient(0);
         return ((System.Net.IPEndPoint)probe.Client.LocalEndPoint!).Port;
     }
@@ -53,7 +53,7 @@ public class RudpLoopbackTests
         var (_, client, handle) = await PairAsync();
         await using var _ = handle;
 
-        // void + non-OneWay 이라 빈 응답까지 왕복한다. Unreliable 은 루프백에서 유실되지 않는다.
+        // void + non-OneWay, so it still roundtrips to an empty response. Unreliable frames are not lost on the loopback.
         await Within(client.PingAsync(11));
         client.Dispose();
     }
@@ -122,7 +122,7 @@ public class RudpLoopbackTests
     [Fact]
     public async Task Connect_timeout_bounds_silent_host_failure()
     {
-        // 아무도 듣지 않는 포트(블랙홄): 임시 포트를 확보한 뒤 닫아 만든다.
+        // A port nobody listens on (black hole): grab an ephemeral port, then close it.
         int silentPort;
         using (var probe = new System.Net.Sockets.UdpClient(0))
         {
@@ -131,7 +131,7 @@ public class RudpLoopbackTests
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        // 300ms 상한: LiteNetLib 기본(약 5초)이 아니라 그 이내로 실패가 확정돼야 한다.
+        // 300ms bound: the failure must be confirmed within it — not at the LiteNetLib default (~5s).
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             RpcClient.ConnectAsync("127.0.0.1", silentPort, Key, 300,
                 channel => new RogueClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub))));
@@ -150,7 +150,7 @@ public class RudpLoopbackTests
         using var client = await E2EClientHub.ConnectAsync("127.0.0.1", port, Key);
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
 
-        // 서버 구현은 2초 지연(Slow) — 토큰 예산(300ms)이 대기를 먼저 끊는다(와이어 위 취소 검증).
+        // The server implementation delays 2s (Slow) — the token budget (300ms) must cut the wait first (cancellation verified on the wire).
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => Within(client.SlowAsync(2000, cts.Token), 5000));
@@ -159,7 +159,7 @@ public class RudpLoopbackTests
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
             $"cancellation took {stopwatch.Elapsed} — token budget did not bound the wait");
 
-        // 취소는 세션을 오염시키지 않는다 — 같은 연결로 후속 호출이 정상 왕복한다.
+        // Cancellation must not poison the session — a follow-up call over the same connection roundtrips normally.
         Assert.Equal(5, await Within(client.AddAsync(2, 3)));
     }
 
@@ -171,7 +171,7 @@ public class RudpLoopbackTests
 
         using var client = await E2EClientHub.ConnectAsync("127.0.0.1", port, Key);
 
-        // 서버 구현은 3초 지연 — 호출별 예산 400ms(타임아웃 스캔 틱 1초 포함 ≲2초)가 허브 기본(30초) 대신 대기를 끊는다.
+        // The server implementation delays 3s — the per-call budget of 400ms (including the 1s timeout scan tick, ≲2s) cuts the wait instead of the hub default (30s).
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         await Assert.ThrowsAsync<TimeoutException>(
             () => Within(client.SlowWithPerCallTimeoutAsync(3000), 5000));
@@ -180,7 +180,7 @@ public class RudpLoopbackTests
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
             $"per-call timeout took {stopwatch.Elapsed} — budget did not bound the wait");
 
-        // 만료는 세션을 오염시키지 않는다 — 같은 연결로 후속 호출이 정상 왕복한다(뒤늦은 응답은 버려진다).
+        // Expiry must not poison the session — a follow-up call over the same connection roundtrips normally (the late response is discarded).
         Assert.Equal(5, await Within(client.AddAsync(2, 3)));
     }
 
@@ -189,15 +189,15 @@ public class RudpLoopbackTests
     {
         int port = NextPort();
 
-        // 상한 1: 연결 고갈 공격 방어 — 초과 접속은 즉시 거부되고 수락은 계속된다.
+        // Limit of 1: defends against connection-exhaustion attacks — excess peers are rejected immediately while acceptance continues.
         await using var handle = await RpcHost.ListenAsync(port, 1, Key,
             channel => new E2EServerHub(hub => HubSessionFactory.CreateRudpSession(channel, hub)),
             _ => Task.CompletedTask);
 
         using var first = await E2EClientHub.ConnectAsync("127.0.0.1", port, Key);
-        Assert.Equal(5, await Within(first.AddAsync(2, 3))); // 상한 이내 클라는 정상 동작
+        Assert.Equal(5, await Within(first.AddAsync(2, 3))); // a client within the limit works normally
 
-        // 상한 초과 — 재시도 소진이 아니라 즉시 거부 통보로 ConnectAsync 가 실패한다.
+        // Over the limit — ConnectAsync fails via an immediate rejection notice, not by exhausting retries.
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             RpcClient.ConnectAsync("127.0.0.1", port, Key,
                 channel => new RogueClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub))));
@@ -217,7 +217,7 @@ public class RudpLoopbackTests
     {
         int port = NextPort();
 
-        // 서버·클라 모두 CRC32c 켠 설정 — 무결성 레이어 위에서 정상 왕복한다.
+        // CRC32c enabled on both server and client — normal roundtrips over the integrity layer.
         var serverOptions = new RpcEndpointOptions { ConnectionKey = Key, EnableCrc32c = true };
         await using var handle = await RpcHost.ListenWithOptionsAsync(port, serverOptions,
             channel => new E2EServerHub(hub => HubSessionFactory.CreateRudpSession(channel, hub)),
@@ -230,7 +230,7 @@ public class RudpLoopbackTests
         Assert.Equal(5, await Within(client.AddAsync(2, 3)));
         client.Dispose();
 
-        // 와이어 비호환 확인 — CRC 를 끈 클라이언트는 체크섬 위반 패킷으로 취급돼 연결 수립 불가(300ms 상한으로 빠르게 실패).
+        // Wire-incompatibility check — a client with CRC off is treated as a checksum-violating peer and cannot connect (fails fast with the 300ms bound).
         var plainOptions = new RpcEndpointOptions { ConnectionKey = Key, ConnectTimeoutMs = 300 };
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             RpcClient.ConnectWithOptionsAsync("127.0.0.1", port, plainOptions,
@@ -243,14 +243,14 @@ public class RudpLoopbackTests
         int port = NextPort();
         await using var handle = await E2EServerHub.ListenAsync(port, Key, _ => Task.CompletedTask);
 
-        Assert.Equal(0, handle.ActiveConnectionCount); // 수락 전
+        Assert.Equal(0, handle.ActiveConnectionCount); // before acceptance
 
         using var client = await E2EClientHub.ConnectAsync("127.0.0.1", port, Key);
         await Within(client.AddAsync(2, 3));
         await WaitUntilAsync(() => handle.ActiveConnectionCount == 1);
 
         client.Dispose();
-        await WaitUntilAsync(() => handle.ActiveConnectionCount == 0); // 끊김 회수(형제 제안 P4 운영 신호)
+        await WaitUntilAsync(() => handle.ActiveConnectionCount == 0); // disconnect reclaim (sibling proposal P4 operational signal)
     }
 
     [Fact]
@@ -258,8 +258,8 @@ public class RudpLoopbackTests
     {
         int port = NextPort();
 
-        // 수용→구독 창구에 이미 죽은 허브 — 끊김 이벤트(수명당 1회)는 구독자 없이 발화를 마쳤다.
-        // 스윕이 없으면(수정 전) 이 peer 는 Stop 까지 ActiveConnectionCount 를 1로 유지한다.
+        // A hub already dead in the accept→subscribe window — its disconnect event (once per lifetime) fired without any subscriber.
+        // Without the sweep (pre-fix), this peer would keep ActiveConnectionCount at 1 until Stop.
         var accepted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var handle = await RpcHost.ListenAsync(port, Key, channel =>
         {
@@ -270,8 +270,8 @@ public class RudpLoopbackTests
 
         using var client = await E2EClientHub.ConnectAsync("127.0.0.1", port, Key);
 
-        await accepted.Task; // 수용(→스윕) 완료 관측 — 이 시점 카운터가 0이어야 한다
-        await WaitUntilAsync(() => handle.ActiveConnectionCount == 0); // 대기 없이 즉시 회수
+        await accepted.Task; // observes acceptance (→ sweep) completion — the counter must be 0 at this point
+        await WaitUntilAsync(() => handle.ActiveConnectionCount == 0); // reclaimed immediately, without waiting
     }
 
     [Fact]
@@ -280,16 +280,16 @@ public class RudpLoopbackTests
         int port = NextPort();
         await using var handle = await E2EServerHub.ListenAsync(port, Key, _ => Task.CompletedTask);
 
-        // 세션 팩토리에 큐 옵션 통과 — 송신 프레임 상한 64바이트로 좁힌다(형제 제안 P3: FrameTimeout·MaxFrameLength 통합 관리).
+        // Queue options flow through the session factory — narrow the send frame limit to 64 bytes (sibling proposal P3: unified FrameTimeout·MaxFrameLength management).
         var queueOptions = new Communication.Shared.Messages.MessageQueueOptions { MaxFrameLength = 64 };
         using var client = await RpcClient.ConnectAsync("127.0.0.1", port, Key,
             channel => new E2EClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub, queueOptions)));
         client.RpcTimeout = TimeSpan.FromSeconds(2);
 
-        // 상한 이내 프레임은 정상 왕복한다.
+        // Frames within the limit roundtrip normally.
         Assert.Equal(5, await Within(client.AddAsync(2, 3)));
 
-        // 상한 초과 페이로드는 송신 격리되어 응답 없음 — 타임아웃(또는 격리 예외)으로 2초 이내 실패한다.
+        // Over-limit payloads are quarantined on send with no response — fails within 2s via timeout (or the quarantine exception).
         string big = new string('x', 200);
         await Assert.ThrowsAnyAsync<Exception>(() => Within(client.EchoAsync(big)));
     }
@@ -300,7 +300,7 @@ public class RudpLoopbackTests
         int port = NextPort();
         await using var handle = await E2EServerHub.ListenAsync(port, Key, _ => Task.CompletedTask);
 
-        // 서버가 모르는 MethodId 를 직접 심는다(생성 스텁을 우회하는 원시 요청).
+        // Plants a MethodId the server does not know (a raw request bypassing the generated stubs).
         using var rogue = await RpcClient.ConnectAsync("127.0.0.1", port, Key,
             channel => new RogueClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub)));
 
@@ -377,7 +377,7 @@ public class RudpLoopbackTests
         var (_, client, handle) = await PairAsync();
         await using var _ = handle;
 
-        // 타입 인자 없이 일반 호출처럼 쓴다 — T 가 인자에서 추론된다.
+        // Called like a normal method, without type arguments — T is inferred from the arguments.
         Assert.Equal("System.Int32:42", await Within(client.DescribeAsync(42)));
         Assert.Equal("System.String:hi", await Within(client.DescribeAsync("hi")));
         client.Dispose();
@@ -393,7 +393,7 @@ public class RudpLoopbackTests
         Assert.Null(await Within(client.BlendAsync<string, double, ChatLine>(2.5, new ShoutChatLine { Text = "y" })));
 
         await WaitUntilAsync(() => E2EServerHub.ReceivedGeneric.Contains("Blend:Single:Single:Order:Order"));
-        // T3=ChatLine 로 보낸 파생 타입이 그대로 도착한다(그룹 다형성 보존).
+        // The derived type sent as T3=ChatLine arrives intact (group polymorphism preserved).
         await WaitUntilAsync(() => E2EServerHub.ReceivedGeneric.Contains("Blend:Double:Double:ChatLine:ShoutChatLine"));
         client.Dispose();
     }
@@ -418,11 +418,11 @@ public class RudpLoopbackTests
         int port = NextPort();
         await using var handle = await E2EServerHub.ListenAsync(port, Key, _ => Task.CompletedTask);
 
-        // 생성 스텁을 우회해 선언 밖 구성 인덱스를 실어 보낸다(런타임 백스톱 검증).
+        // Bypasses the generated stubs to send a construction index outside the declarations (runtime backstop check).
         using var rogue = await RpcClient.ConnectAsync("127.0.0.1", port, Key,
             channel => new RogueClientHub(hub => HubSessionFactory.CreateRudpSession(channel, hub)));
 
-        // GetDefault(methodId 7) 의 페이로드 = 구성 인덱스 int32 하나.
+        // The payload of GetDefault (methodId 7) = a single construction-index int32.
         byte[] payload = BitConverter.GetBytes(int.MaxValue);
         RpcFaultException fault = await Assert.ThrowsAsync<RpcFaultException>(() => Within(rogue.ProbeAsync(7, payload)));
         Assert.Equal(RpcErrorCode.Unhandled, fault.ErrorCode);
@@ -445,7 +445,7 @@ public class RudpLoopbackTests
         var (_, client, handle) = await PairAsync();
         await using var _ = handle;
 
-        // GuardedReject_Implementation 은 호출되면 예외를 던지므로, 코드 7 이 오는 것이 곧 미호출 증명이다.
+        // GuardedReject_Implementation throws if ever invoked, so receiving code 7 is itself proof of non-invocation.
         RpcFaultException fault = await Assert.ThrowsAsync<RpcFaultException>(() => Within(client.GuardedRejectAsync(1)));
         Assert.Equal(RpcErrorCode.ValidationFailed, fault.ErrorCode);
         client.Dispose();
@@ -457,7 +457,7 @@ public class RudpLoopbackTests
         var (_, client, handle) = await PairAsync();
         await using var _ = handle;
 
-        // T=int 통과(기본값 0 왕복), T=string 은 _Validate false → ValidationFailed(7).
+        // T=int passes (default 0 roundtrips); T=string hits _Validate false → ValidationFailed(7).
         Assert.Equal(0, await Within(client.GuardedDefaultAsync<int>()));
         RpcFaultException fault = await Assert.ThrowsAsync<RpcFaultException>(() => Within(client.GuardedDefaultAsync<string>()));
         Assert.Equal(RpcErrorCode.ValidationFailed, fault.ErrorCode);
@@ -484,7 +484,7 @@ public class RudpLoopbackTests
     {
         if (await Task.WhenAny(task, Task.Delay(timeoutMs)).ConfigureAwait(false) != task)
         {
-            throw new TimeoutException($"주어진 시간({timeoutMs}ms) 내에 완료되지 않았습니다.");
+            throw new TimeoutException($"The task did not complete within {timeoutMs}ms.");
         }
 
         return await task.ConfigureAwait(false);
@@ -494,7 +494,7 @@ public class RudpLoopbackTests
     {
         if (await Task.WhenAny(task, Task.Delay(timeoutMs)).ConfigureAwait(false) != task)
         {
-            throw new TimeoutException($"주어진 시간({timeoutMs}ms) 내에 완료되지 않았습니다.");
+            throw new TimeoutException($"The task did not complete within {timeoutMs}ms.");
         }
 
         await task.ConfigureAwait(false);
@@ -513,13 +513,13 @@ public class RudpLoopbackTests
             await Task.Delay(25).ConfigureAwait(false);
         }
 
-        throw new TimeoutException("주어진 시간 내에 조건이 충족되지 않았습니다.");
+        throw new TimeoutException("The condition was not met within the allotted time.");
     }
 }
 
 /// <summary>
-/// 생성 스텁 없이 원시 요청을 보내는 클라이언트(미등록 MethodId 경로를 검증하기 위한 용도).
-/// 계약 자체를 비워 두어 스텁 생성을 없애고, 허브 자체는 partial 이어야 DRPCGEN001 이 나지 않는다.
+/// A client that sends raw requests without generated stubs (used to exercise unregistered MethodId paths).
+/// The contracts are left empty to suppress stub generation, and the hub itself must be partial to avoid DRPCGEN001.
 /// </summary>
 public interface IRogueServerProcedures : IServerProcedureDeclarations
 {

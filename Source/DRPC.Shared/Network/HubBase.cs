@@ -7,15 +7,16 @@ using DRPC.Shared.Message;
 namespace DRPC.Shared.Network;
 
 /// <summary>
-/// RPC 허브의 공용 런타임. <typeparamref name="TSPD"/>(서버 계약)와 <typeparamref name="TCPD"/>(클라이언트 계약)를
-/// 매개변수로 받아 어느 쪽 엔드포인트든 같은 런타임을 쓴다.
+/// Shared runtime of the RPC hub. Parameterized by <typeparamref name="TSPD"/> (server contract) and
+/// <typeparamref name="TCPD"/> (client contract) so both endpoint kinds reuse the same runtime.
 /// </summary>
-/// <typeparam name="TSPD">서버가 구현하는 함수 선언 인터페이스.</typeparam>
-/// <typeparam name="TCPD">클라이언트가 구현하는 함수 선언 인터페이스.</typeparam>
+/// <typeparam name="TSPD">The procedure-declaration interface the server implements.</typeparam>
+/// <typeparam name="TCPD">The procedure-declaration interface the client implements.</typeparam>
 public abstract class HubBase<TSPD, TCPD> : HubBase
     where TSPD : IServerProcedureDeclarations
     where TCPD : IClientProcedureDeclarations
 {
+    /// <summary>Initializes the hub with the session factory.</summary>
     protected HubBase(Func<HubBase, ISession> sessionFactory)
         : base(sessionFactory)
     {
@@ -23,20 +24,21 @@ public abstract class HubBase<TSPD, TCPD> : HubBase
 }
 
 /// <summary>
-/// 왕복 RPC 런타임: outgoing 호출(CallId 할당·응답 대기·타임아웃), incoming 디스패치(동시 상한), 끊김 정리.
-/// 생성된 허브 스텁만 이 클래스의 protected API 를 사용한다 — 사용자 코드는 직접 다루지 않는다.
+/// The round-trip RPC runtime: outgoing calls (CallId allocation, response wait, timeouts), incoming
+/// dispatch (concurrency cap), and disconnection cleanup. Only the generated hub stubs use this class's
+/// protected API — user code does not touch it directly.
 /// </summary>
 public abstract class HubBase : IHubBase, IDisposable
 {
     readonly ISession _session;
 
-    /// <summary>MethodId → 처리 위임(페이로드 바이트 → 응답 페이로드 바이트).</summary>
+    /// <summary>MethodId → handler delegate (payload bytes → response payload bytes).</summary>
     protected Dictionary<int, Func<byte[], Task<byte[]>>> MethodCallActions { get; } = new();
 
-    /// <summary>Incoming MethodId → 응답·오류 전송 시 사용할 전송 방식(요청의 방식과 일치시킨다).</summary>
+    /// <summary>Incoming MethodId → delivery mode used when sending the response or error (matched to the request's mode).</summary>
     protected Dictionary<int, RpcDeliveryMode> MethodDeliveryModes { get; } = new();
 
-    /// <summary>다음 CallId. 0 은 one-way 예약이라 절대 할당하지 않는다.</summary>
+    /// <summary>Next CallId. 0 is reserved for one-way and is never allocated.</summary>
     int _nextCallId;
 
     sealed class PendingCall
@@ -50,10 +52,10 @@ public abstract class HubBase : IHubBase, IDisposable
 
         public TaskCompletionSource<byte[]> Tcs { get; }
 
-        /// <summary>0 이면 무제한(스캔 대상 아님).</summary>
+        /// <summary>0 means unlimited (excluded from timeout scans).</summary>
         public long DeadlineUtcTicks { get; }
 
-        /// <summary>이 호출에 실제 적용된 예산(허브 기본 또는 호출별 오버라이드) — 만료 보고 문구용.</summary>
+        /// <summary>The budget actually applied to this call (hub default or per-call override) — used in the expiry message.</summary>
         public TimeSpan EffectiveTimeout { get; }
     }
 
@@ -69,9 +71,11 @@ public abstract class HubBase : IHubBase, IDisposable
     int _maxPendingCalls;
 
     /// <summary>
-    /// <see cref="RpcErrorCode.Unhandled"/> 오류의 원격 응답에 예외 상세 메시지(<c>ex.Message</c>)를 실을지.
-    /// 기본 <c>true</c>(기존 동작 — 신뢰 피어 간 개발 편의). <c>false</c> 면 내부 예외 문구(경로·내부 상태 노출 표면) 대신
-    /// 고정 문구를 보낸다 — 인터넷 노출 엔드포인트 권장. 서버 측 <c>Trace</c> 기록은 설정과 무관하게 항상 남는다.
+    /// Whether the remote response for <see cref="RpcErrorCode.Unhandled"/> errors carries the exception
+    /// detail (<c>ex.Message</c>). Default <c>true</c> (existing behavior — convenient when developing
+    /// between trusted peers). When <c>false</c>, a fixed message is sent instead of the internal exception
+    /// text (which can leak paths and internal state) — recommended for internet-exposed endpoints. The
+    /// server-side <c>Trace</c> log is always written regardless of this setting.
     /// </summary>
     public bool SendErrorDetails { get; set; } = true;
 
@@ -79,10 +83,10 @@ public abstract class HubBase : IHubBase, IDisposable
     bool _disposed;
 
     /// <summary>
-    /// outgoing RPC 응답 대기 상한. 기본 30초. <see cref="Timeout.InfiniteTimeSpan"/> 또는 0 이하이면 무제한.
-    /// 만료된 호출은 <see cref="TimeoutException"/> 으로 완료된다.
+    /// The maximum wait for an outgoing RPC response. Default 30 seconds. <see cref="Timeout.InfiniteTimeSpan"/>
+    /// or a value of 0 or less means unlimited. Expired calls complete with <see cref="TimeoutException"/>.
     /// </summary>
-    /// <remarks>32비트 플랫폼(Unity IL2CPP 등)에서의 TimeSpan 티어 방지를 위해 ticks 를 volatile 로 읽고 쓴다.</remarks>
+    /// <remarks>Ticks are read and written as volatile to prevent TimeSpan tearing on 32-bit platforms (Unity IL2CPP).</remarks>
     public TimeSpan RpcTimeout
     {
         get => new TimeSpan(Volatile.Read(ref _rpcTimeoutTicks));
@@ -92,10 +96,10 @@ public abstract class HubBase : IHubBase, IDisposable
     long _rpcTimeoutTicks = TimeSpan.FromSeconds(30).Ticks;
 
     /// <summary>
-    /// 동시 Incoming 처리 상한. 0(기본)이면 무제한. 초과하면 non-one-way 요청은
-    /// <see cref="RpcErrorCode.Overloaded"/> 오류를 받고 one-way 은 버려진다.
+    /// The cap on concurrent incoming processing. 0 (default) means unlimited. When exceeded, non-one-way
+    /// requests receive a <see cref="RpcErrorCode.Overloaded"/> error and one-way requests are dropped.
     /// </summary>
-    /// <remarks>연결 직후·유휴 상태에서 설정한다. 처리 중인 실행과의 세마포어 재교대는 지원하지 않는다.</remarks>
+    /// <remarks>Set right after connecting or while idle. Re-arming the semaphore against in-flight executions is not supported.</remarks>
     public int MaxConcurrentIncoming
     {
         get => _maxConcurrentIncoming;
@@ -116,10 +120,11 @@ public abstract class HubBase : IHubBase, IDisposable
     }
 
     /// <summary>
-    /// 동시 대기 중인 outgoing RPC(응답 대기 CallId) 상한. 0(기본)이면 무제한.
-    /// 상한 도달 시 새 호출은 대기하지 않고 즉시 <see cref="InvalidOperationException"/> 으로 실패한다(fail-fast) —
-    /// 응답 불능 피어에 대한 대기 테이블 무한 적체(메모리 고갈)를 끊는다.
-    /// 검사·등록 사이 경쟁으로 순간적으로 상한을 약간 넘을 수 있다(근사 강제).
+    /// The cap on concurrently pending outgoing RPCs (CallIds awaiting a response). 0 (default) means unlimited.
+    /// At the cap, a new call fails immediately with <see cref="InvalidOperationException"/> instead of queueing
+    /// (fail-fast) — it cuts unbounded growth of the wait table (memory exhaustion) against a peer that never
+    /// answers. A momentary overshoot slightly beyond the cap is possible due to the check-then-register race
+    /// (approximate enforcement).
     /// </summary>
     public int MaxPendingCalls
     {
@@ -135,22 +140,26 @@ public abstract class HubBase : IHubBase, IDisposable
         }
     }
 
-    /// <summary>연결이 끊겼을 때 발생(세션당 1회). 대기 중 호출은 이미 실패 처리된 뒤다.</summary>
+    /// <summary>Raised when the connection ends (once per hub). Pending calls have already been failed by the time this runs.</summary>
     public event Action? Disconnected;
 
     /// <summary>
-    /// 관측된 마지막 끊김 사유(형제 제안 P4 운영 신호 — <see cref="DisconnectReason.FlowControl"/> 백프레셔 식별 등).
-    /// 끊김 전에는 <c>null</c>. <see cref="Disconnected"/> 핸들러 안에서 읽는다(이벤트 인자 확장 대신 — 시그니처 불변 유지).
+    /// The last observed disconnection cause (sibling proposal P4 operational signal — identifies
+    /// <see cref="DisconnectReason.FlowControl"/> backpressure, etc.). <c>null</c> before disconnection.
+    /// Read it inside a <see cref="Disconnected"/> handler (instead of extending event args — keeps the
+    /// signature stable).
     /// </summary>
     public DisconnectReason? LastDisconnectReason { get; private set; }
 
     /// <summary>
-    /// <see cref="Disconnected"/> 이벤트가 이미 발화했는지(원격 끊김·<see cref="Disconnect()"/>·<see cref="Dispose"/> 완료).
-    /// 이벤트는 허브 수명당 1회라 <b>구독 이전에 끊긴 허브는 이벤트를 받을 수 없다</b> — 리스너 측 즉시 회수,
-    /// 늦은 구독자의 사전 검사용 관측 신호.
+    /// Whether the <see cref="Disconnected"/> event has already fired (remote disconnect, <see cref="Disconnect()"/>,
+    /// or <see cref="Dispose"/> completed). The event fires once per hub lifetime, so <b>a hub that disconnected
+    /// before you subscribed cannot deliver the event</b> — an observable signal for immediate reclamation on
+    /// listener sides and for late subscribers to check first.
     /// </summary>
     public bool IsDisconnected => Volatile.Read(ref _disconnectRaised) != 0;
 
+    /// <summary>Initializes the hub by opening its session through the factory.</summary>
     protected HubBase(Func<HubBase, ISession> sessionFactory)
     {
         if (sessionFactory is null)
@@ -161,10 +170,10 @@ public abstract class HubBase : IHubBase, IDisposable
         _session = sessionFactory.Invoke(this);
     }
 
-    /// <summary>세션 끊김 관측 등을 위한 전송 진입점. 생성된 코드가 사용하는 protected 표면.</summary>
+    /// <summary>The transport entry point, also used to observe session events. Protected surface used by generated code.</summary>
     protected internal ISession Session => _session;
 
-    /// <summary>one-way 요청을 보낸다. CallId 는 0 고정(응답 대기표 없음).</summary>
+    /// <summary>Sends a one-way request. CallId is fixed at 0 (no wait-table entry).</summary>
     protected async Task SendRPC(int methodId, byte[] parameterData, RpcDeliveryMode mode)
     {
         const uint callId = 0;
@@ -173,17 +182,20 @@ public abstract class HubBase : IHubBase, IDisposable
     }
 
     /// <summary>
-    /// 요청을 보내고 응답·오류·타임아웃·취소·끊김 중 하나로 완료되는 응답 바이트를 기다린다.
-    /// <paramref name="cancellationToken"/> 이 취소되면 대기가 즉시 취소 완료되고 슬롯이 반납된다(이미 송신된 요청은 회수되지 않고, 뒤늦은 응답은 도착해도 무시된다).
+    /// Sends a request and waits for the response bytes, completing on response, error, timeout,
+    /// cancellation, or disconnection. If <paramref name="cancellationToken"/> is cancelled, the wait
+    /// completes as cancelled and the slot is released (the already-sent request is not recalled; a late
+    /// response is ignored because no wait entry remains).
     /// </summary>
     protected async Task<byte[]> RequestRPC(int methodId, byte[] parameterData, RpcDeliveryMode mode,
         CancellationToken cancellationToken = default)
         => await RequestRPC(methodId, parameterData, mode, null, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
-    /// 호출별 타임아웃 지정 버전. <paramref name="timeout"/> 이 null 이면 허브 기본(<see cref="RpcTimeout"/>)을 따르고,
-    /// 값이 있으면 이 호출에만 그 예산이 적용된다(느린 배치 호출에만 넉넉한 상한을 주고 나머지는 허브 기본을 지키게 하는 용도).
-    /// 해석은 허브 노브와 동일 — <see cref="Timeout.InfiniteTimeSpan"/> 또는 0 이하이면 이 호출은 무제한 대기한다.
+    /// Per-call timeout variant. When <paramref name="timeout"/> is null, the hub default
+    /// (<see cref="RpcTimeout"/>) applies; a value applies that budget to this call only (gives slow
+    /// batch calls a generous limit while everything else keeps the hub default). Interpretation matches
+    /// the hub knob — <see cref="Timeout.InfiniteTimeSpan"/> or 0 or less waits indefinitely for this call.
     /// </summary>
     protected async Task<byte[]> RequestRPC(int methodId, byte[] parameterData, RpcDeliveryMode mode,
         TimeSpan? timeout, CancellationToken cancellationToken = default)
@@ -212,7 +224,7 @@ public abstract class HubBase : IHubBase, IDisposable
         {
             if (cancellationToken.CanBeCanceled)
             {
-                // 취소는 대기만 끝낸다 — 송신된 요청을 회수하지 않는다. 늦은 응답은 대기표가 없어 무시된다.
+                // Cancellation only ends the wait — it does not recall the sent request. Late responses hit no wait entry and are ignored.
                 cancellation = cancellationToken.Register(() =>
                 {
                     if (_pendingCalls.TryRemove(callId, out var cancelled))
@@ -248,7 +260,7 @@ public abstract class HubBase : IHubBase, IDisposable
         return DateTime.UtcNow.Add(effective).Ticks;
     }
 
-    /// <summary>호버 공용 타이머 1개(1초 스캔). 호출당 CTS 는 만들지 않는다.</summary>
+    /// <summary>One shared scan timer (1s tick). No per-call CTS is ever created.</summary>
     void EnsureTimeoutTimer()
     {
         lock (_timeoutTimerGate)
@@ -281,11 +293,13 @@ public abstract class HubBase : IHubBase, IDisposable
             }
         }
 
-        // 유휴 주차 — 시간 제한 대기(deadline > 0)가 하나도 없으면 타이머를 반납한다. 무제한(롱폴) 호출만
-        // 남은 피어도 주차 대상이다(무제한은 스캔 대상이 아니어서 틱이 일만 한다). 역호출이라도 한 번 한 피어마다
-        // 1Hz 틱이 서버 수명 내내 남는 유휴 비용과, Dispose 누락 시 타이머가 허브를 고정하는 누수를 함께 끊는다.
-        // 조건은 게이트 안에서 재평가한다 — 스캔 루프의 낡은 값으로 판정하면 TryAdd 직후 EnsureTimeoutTimer 와의
-        // 재생성 경쟁이 열린다(양쪽 다 같은 락을 쓰므로 게이트 안 판정은 주파를 직렬화한다).
+        // Idle parking — when no deadline-bounded wait (deadline > 0) remains, return the timer. Peers with
+        // only unlimited (long-poll) calls also park (unlimited calls are not scanned, so ticks would be pure
+        // overhead). This kills both the idle cost of a 1 Hz tick lingering for the server's lifetime after a
+        // single reverse call, and the leak where a missed Dispose pins the hub via the timer. The condition is
+        // re-evaluated inside the gate — judging from the stale scan-loop value would open a re-creation race
+        // with EnsureTimeoutTimer right after a TryAdd (both take the same lock, so the in-gate decision
+        // serializes the handoff).
         lock (_timeoutTimerGate)
         {
             if (_timeoutTimer is not null && !HasTimedPendingCall())
@@ -296,7 +310,7 @@ public abstract class HubBase : IHubBase, IDisposable
         }
     }
 
-    /// <summary>시간 제한 대기(deadline &gt; 0)가 하나라도 남았는가. 주차 판정용 — 게이트 안에서 호출해 경쟁을 직렬화한다.</summary>
+    /// <summary>Whether at least one deadline-bounded wait (deadline &gt; 0) remains. Parking decision — called inside the gate to serialize against races.</summary>
     bool HasTimedPendingCall()
     {
         foreach (var pair in _pendingCalls)
@@ -322,17 +336,18 @@ public abstract class HubBase : IHubBase, IDisposable
         return id;
     }
 
-    /// <summary>수신 요청을 처리 큐로 넘긴다(전송 콜백 스레드를 점유하지 않는다).</summary>
+    /// <summary>Hands a received request to the processing queue (does not occupy the transport callback thread).</summary>
     public void OnReceiveRPCRequestMessage(ProcedureCallRequestMessage message)
     {
         _ = ProcessRequestAsync(message);
     }
 
     /// <summary>
-    /// Fire-and-forget 방화벽 — 아래 코어를 벗어나는 예외는 전부 미관측 태스크 예외가 된다
-    /// (서버 중지·세션 소멸과 경쟁하는 게이트 해지, 끊긴 세션으로의 Overloaded 오류 송신 등).
-    /// 정상 종료 경로에서 나는 잔여 예외까지 잡아 Trace 로만 남긴다.
-    /// protected 로 디스패치 태스크를 관측 가능하게 돌려준다(테스트 이중 관측용 — 생성 스텁도 사용하지 않는다, 사용자 코드 직접 호출 대상 아님).
+    /// Fire-and-forget firewall — any exception escaping the core below becomes an unobserved task
+    /// exception (gate disposal racing server shutdown or session teardown, Overloaded error sends onto
+    /// a dead session, etc.). It also catches residual exceptions on the normal shutdown path, leaving
+    /// only a Trace entry. Exposes the dispatch task as observable via protected (for dual observation in
+    /// tests — generated stubs do not use it either; not intended for direct user calls).
     /// </summary>
     protected async Task ProcessRequestAsync(ProcedureCallRequestMessage message)
     {
@@ -370,7 +385,7 @@ public abstract class HubBase : IHubBase, IDisposable
 
         try
         {
-            // 호출 권한 검증 — lookup 전에 판정해 거부된 메서드의 존재 여부도 노출하지 않는다.
+            // Authorization — decided before the method lookup so even the existence of a rejected method is not revealed.
             if (!await AuthorizeRequestAsync(message.MethodId).ConfigureAwait(false))
             {
                 if (!oneWay)
@@ -405,7 +420,7 @@ public abstract class HubBase : IHubBase, IDisposable
         }
         catch (RpcValidationFailedException ex)
         {
-            // 검증 거부는 예상된 결과(미구현 버그 아님) — 오류 응답만 한다. one-way 는 응답 채널이 없어 스킵.
+            // Validation rejection is an expected outcome (not an implementation bug) — error response only. One-way has no response channel, so it is skipped.
             if (!oneWay)
             {
                 await SendErrorAsync(message.CallId, RpcErrorCode.ValidationFailed, ex.Message, ResolveMode(message.MethodId)).ConfigureAwait(false);
@@ -413,7 +428,7 @@ public abstract class HubBase : IHubBase, IDisposable
         }
         catch (Exception ex)
         {
-            // 서버 측 관측 — 원격 전송 여부·상세 여부와 무관하게 항상 기록한다(콘솔 의존 금지 — Trace 만).
+            // Server-side observation — always logged regardless of whether/how it is sent remotely (no console dependency — Trace only).
             System.Diagnostics.Trace.TraceError($"RPC method {message.MethodId} (call {message.CallId}) unhandled: {ex}");
 
             if (oneWay)
@@ -431,7 +446,7 @@ public abstract class HubBase : IHubBase, IDisposable
             }
             catch
             {
-                // 오류 보고 실패는 원래 실패를 가리지 않는다.
+                // A failure to report the error must not mask the original failure.
             }
         }
         finally
@@ -442,36 +457,37 @@ public abstract class HubBase : IHubBase, IDisposable
             }
             catch (ObjectDisposedException)
             {
-                // 허브 Dispose·MaxConcurrentIncoming 재설정이 슬롯 점유 중 게이트를 해지했다 — 정상 종료 경쟁.
+                // Hub Dispose or a MaxConcurrentIncoming reset disposed the gate while a slot was held — normal shutdown race.
             }
         }
     }
 
     /// <summary>
-    /// 와이어상의 one-way 신호는 CallId 0 고정이다. <see cref="SendRPC"/> 는 0 을 보내고
-    /// <see cref="RequestRPC"/> 는 1 부터 할당하므로 두 값은 겹치지 않는다.
-    /// 수신 측 등록표로 판정하지 않는다 — 서버·클라이언트 계약이 같은 MethodId 를 서로 다르게 one-way 로
-    /// 선언해도 어긋나지 않고, 미등록 MethodId 도 올바르게 취급된다.
+    /// The wire signal for one-way is a fixed CallId of 0. SendRPC sends 0 and
+    /// RequestRPC allocates from 1, so the two ranges never overlap. It is not decided from
+    /// the receive-side registration table — server and client contracts may declare the same MethodId
+    /// differently as one-way without mismatch, and unregistered MethodIds are still handled correctly.
     /// </summary>
     static bool IsOneWay(ProcedureCallRequestMessage message) => message.CallId == 0;
 
-    /// <summary>요청 MethodId 에 등록된 전송 방식. 미등록이면 ReliableOrdered.</summary>
+    /// <summary>The delivery mode registered for the request's MethodId. ReliableOrdered when unregistered.</summary>
     RpcDeliveryMode ResolveMode(int methodId)
         => MethodDeliveryModes.TryGetValue(methodId, out var mode) ? mode : RpcDeliveryMode.ReliableOrdered;
 
     /// <summary>
-    /// Incoming RPC 호출 권한 검증 훅. 기본은 전부 허용(true).
-    /// 서버 허브에서 override 해 메서드별 호출 권한(예: 관리자 전용 프로시저)을 검사한다.
-    /// 거부 시 non-one-way 호출은 <see cref="RpcErrorCode.PermissionDenied"/> 오류를 받고 one-way 는 폐기된다.
-    /// 메서드 등록표 조회보다 먼저 판정하므로 미등록 MethodId 의 존재 여부도 노출하지 않는다.
-    /// 처리 동시 상한(MaxConcurrentIncoming) 슬롯 안에서 호출됨 — 긴 검사는 상한 소진에 유의.
+    /// Hook for authorizing incoming RPC calls. The default allows everything (true).
+    /// Override in a server hub to check per-method call permission (e.g. admin-only procedures).
+    /// On denial, non-one-way calls receive a <see cref="RpcErrorCode.PermissionDenied"/> error and one-way
+    /// calls are discarded. It is decided before the method registration lookup, so the existence of an
+    /// unregistered MethodId is not revealed either. Runs inside a MaxConcurrentIncoming slot — beware that
+    /// long checks consume the concurrency budget.
     /// </summary>
     protected virtual Task<bool> AuthorizeRequestAsync(int methodId) => Task.FromResult(true);
 
     Task SendErrorAsync(uint callId, int errorCode, string message, RpcDeliveryMode mode)
         => _session.SendAsync(new ProcedureCallErrorMessage(callId, errorCode, message), mode.ToSendOptions());
 
-    /// <summary>응답 바이트를 대기 중인 호출에 전달. 대기표가 없는 응답(지연 도착·중복)은 버린다.</summary>
+    /// <summary>Delivers response bytes to the waiting call. Responses with no wait entry (late or duplicate) are discarded.</summary>
     public void OnReceiveRPCResponseMessage(ProcedureCallResponseMessage message)
     {
         if (_pendingCalls.TryRemove(message.CallId, out var pending))
@@ -480,7 +496,7 @@ public abstract class HubBase : IHubBase, IDisposable
         }
     }
 
-    /// <summary>오류 응답을 <see cref="RpcFaultException"/> 으로 대기 중인 호출에 전달한다.</summary>
+    /// <summary>Delivers an error response to the waiting call as a <see cref="RpcFaultException"/>.</summary>
     public void OnReceiveRPCErrorMessage(ProcedureCallErrorMessage message)
     {
         if (_pendingCalls.TryRemove(message.CallId, out var pending))
@@ -489,6 +505,7 @@ public abstract class HubBase : IHubBase, IDisposable
         }
     }
 
+    /// <summary>Fails every pending outgoing RPC with <paramref name="reason"/>.</summary>
     public void CancelPendingCalls(Exception reason)
     {
         foreach (var pair in _pendingCalls)
@@ -500,7 +517,7 @@ public abstract class HubBase : IHubBase, IDisposable
         }
     }
 
-    /// <summary>대기 중 RPC를 실패시키고 세션을 끊은 뒤 <see cref="Disconnected"/> 를 발생시킨다.</summary>
+    /// <summary>Fails pending RPCs and then raises <see cref="Disconnected"/> after ending the session.</summary>
     public void Disconnect()
     {
         CancelPendingCalls(new InvalidOperationException("RPC session disconnected."));
@@ -511,17 +528,17 @@ public abstract class HubBase : IHubBase, IDisposable
         }
         catch
         {
-            // 끊김 정리 중 예외는 호출자에게 전파하지 않는다.
+            // Exceptions during disconnect cleanup must not propagate to the caller.
         }
 
         RaiseDisconnected();
     }
 
-    /// <summary>수신 경로(세션 이벤트)에서 끊김을 통지할 때 사용한다.</summary>
+    /// <summary>Used by the inbound path (session events) to report a disconnection.</summary>
     public void NotifyDisconnected(Exception? reason)
         => NotifyDisconnected(reason, null);
 
-    /// <summary>끊김 사유를 함께 남기고 통지한다(사유 없으면 <see cref="LastDisconnectReason"/> 은 이전값 유지).</summary>
+    /// <summary>Notifies with the disconnection cause recorded (when absent, <see cref="LastDisconnectReason"/> keeps its previous value).</summary>
     public void NotifyDisconnected(Exception? reason, DisconnectReason? disconnectReason)
     {
         if (disconnectReason is { } observed)
@@ -546,10 +563,11 @@ public abstract class HubBase : IHubBase, IDisposable
         }
         catch
         {
-            // 구독자 예외는 런타임을 죽이지 않는다.
+            // Subscriber exceptions must not kill the runtime.
         }
     }
 
+    /// <summary>Fails pending calls, disconnects the session, and releases the timer and incoming gate.</summary>
     public void Dispose()
     {
         if (_disposed)

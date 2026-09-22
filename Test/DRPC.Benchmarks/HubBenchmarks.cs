@@ -10,8 +10,9 @@ using DRPC.Shared.Network;
 namespace DRPC.Benchmarks;
 
 /// <summary>
-/// HubBase 핫패스 벤치마크 — 루프백 메모리 세션으로 런타임(직렬화 제외 디스패치·대기 완성)만 측정한다.
-/// 기준선: Document/03-Reference/Performance.md.
+/// HubBase hot-path benchmarks — a loopback memory session measures the runtime only (dispatch and pending-call
+/// completion, excluding serialization).
+/// Baseline: Document/03-Reference/Performance.md.
 /// </summary>
 [MemoryDiagnoser]
 public class HubBenchmarks
@@ -28,7 +29,7 @@ public class HubBenchmarks
         _session = new BenchSession();
         _hub = new BenchHub(_ => _session);
 
-        // 왕복 루프백: 송신된 요청을 즉시 응답으로 되돌린다(전송 스택 비용 제외).
+        // Roundtrip loopback: bounce the sent request straight back as a response (excludes transport-stack cost).
         _loopback = m =>
         {
             if (m is ProcedureCallRequestMessage { CallId: not 0 } request)
@@ -59,7 +60,7 @@ public class HubBenchmarks
         _hub.OnReceiveRPCRequestMessage(new ProcedureCallRequestMessage(1u, 1, _payload));
         await done.Task;
 
-        _session.Route = _loopback; // 복원
+        _session.Route = _loopback; // restore
     }
 
     [Benchmark(Description = "One-way send (CallId 0)")]
@@ -75,7 +76,7 @@ public class HubBenchmarks
     }
 }
 
-/// <summary>HubBase protected 표면 노출(벤치 전용).</summary>
+/// <summary>Exposes HubBase's protected surface (benchmark-only).</summary>
 sealed class BenchHub : HubBase
 {
     public BenchHub(Func<HubBase, ISession> sessionFactory)
@@ -83,7 +84,7 @@ sealed class BenchHub : HubBase
     {
     }
 
-    /// <summary>왕복 호출 진입점 — 루프백 세션이 응답을 즉시 완성한다.</summary>
+    /// <summary>Roundtrip call entry point — the loopback session completes the response immediately.</summary>
     public Task<byte[]> Roundtrip(int methodId, byte[] payload)
         => RequestRPC(methodId, payload, RpcDeliveryMode.ReliableOrdered);
 
@@ -94,7 +95,7 @@ sealed class BenchHub : HubBase
         => MethodCallActions[methodId] = action;
 }
 
-/// <summary>송신을 라우팅 콜백으로만 전달하는 메모리 세션(전송 스택 비용 0).</summary>
+/// <summary>Memory session that forwards sends to a routing callback (zero transport-stack cost).</summary>
 sealed class BenchSession : ISession
 {
     public Action<object>? Route { get; set; }

@@ -7,7 +7,7 @@ using Xunit;
 namespace DRPC.Shared.Tests;
 
 /// <summary>
-/// HubSessionFactory.CreateTransportOptions 계약: 접속 키 전달·연결 타임아웃 상한 매핑(Communication 2.0.1 ConnectTimeout 채택).
+/// HubSessionFactory.CreateTransportOptions contract: connection key pass-through and connect-timeout cap mapping (Communication 2.0.1 ConnectTimeout adoption).
 /// </summary>
 public class HubSessionFactoryTests
 {
@@ -17,7 +17,7 @@ public class HubSessionFactoryTests
         var options = HubSessionFactory.CreateTransportOptions(null);
 
         Assert.Equal(RudpTransportOptions.DefaultConnectionKey, options.ConnectionKey);
-        Assert.Null(options.ConnectTimeout); // 전송 스택 기본(약 5초) 유지
+        Assert.Null(options.ConnectTimeout); // keeps the transport-stack default (~5s)
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class HubSessionFactoryTests
     [InlineData(0)]
     public void Transport_options_zero_timeout_keeps_transport_default(int connectTimeoutMs)
     {
-        // 0 은 "미설정"(기본 매개변수값) — 전송 스택 기본(약 5초)을 유지한다.
+        // 0 means "unset" (the default parameter value) — keeps the transport-stack default (~5s).
         var options = HubSessionFactory.CreateTransportOptions(null, connectTimeoutMs);
 
         Assert.Null(options.ConnectTimeout);
@@ -43,7 +43,7 @@ public class HubSessionFactoryTests
     [InlineData(int.MinValue)]
     public void Transport_options_negative_timeout_is_rejected(int connectTimeoutMs)
     {
-        // 상한은 양수만 의미가 있다 — 음수는 계약 위반이므로 묵묵히 무시하지 않고 거부한다.
+        // Only a positive cap is meaningful — a negative value violates the contract, so it is rejected rather than silently ignored.
         Assert.Throws<ArgumentOutOfRangeException>("connectTimeoutMs", () =>
         {
             HubSessionFactory.CreateTransportOptions(null, connectTimeoutMs);
@@ -62,7 +62,7 @@ public class HubSessionFactoryTests
     [Fact]
     public void Transport_options_max_connections_maps_and_defaults()
     {
-        // 기본·명시적 0 은 무제한(null) — 상한은 양수만 설정한다.
+        // Default and explicit 0 mean unlimited (null) — only a positive value sets a cap.
         Assert.Null(HubSessionFactory.CreateTransportOptions(null).MaxConnections);
         Assert.Null(HubSessionFactory.CreateTransportOptions(null, 0, 0).MaxConnections);
         Assert.Equal(1, HubSessionFactory.CreateTransportOptions(null, 0, 1).MaxConnections);
@@ -81,7 +81,7 @@ public class HubSessionFactoryTests
     [Fact]
     public void Converter_roundtrips_rpc_messages_without_intermediate_copy()
     {
-        // 송신 핫패스 계약 — 중간 배열 제거(단일 복사) 후에도 바이트 정합 왕복이 보장된다.
+        // Send hot-path contract — byte-exact roundtrips must hold even after removing the intermediate array (single copy).
         IMessageConverter converter = HubSessionFactory.Converter;
         var request = new ProcedureCallRequestMessage(7u, 42, new byte[] { 1, 2, 3 });
         var writer = new System.Buffers.ArrayBufferWriter<byte>();
@@ -97,17 +97,17 @@ public class HubSessionFactoryTests
     [Fact]
     public void Converter_rejects_invalid_header_flags_with_InvalidDataException()
     {
-        // 신뢰 경계 계약(MessageProtocol 2.3.7 채택 핀): 플래그 니블이 독립·그룹 비트를 하나도
-        // 세우지 않은 불법 프레임은 안내형 InvalidDataException 으로 거부된다. 2.3.4 에서는 같은 프레임이
-        // 캐스트가 일어난 적도 없는 InvalidCastException 이었고 원인(플래그 비트 불법)을 가렸다 —
-        // 하위 패키지를 되돌리면 이 테스트가 실패한다(채택 고정).
+        // Trust-boundary contract (MessageProtocol 2.3.7 adoption pin): an illegal frame whose flag nibble raises neither the
+        // standalone nor group bits is rejected with a descriptive InvalidDataException. In 2.3.4 the same frame produced an
+        // InvalidCastException where no cast ever happened, hiding the cause (illegal flag bits) —
+        // downgrading the sibling package makes this test fail (adoption pin).
         IMessageConverter converter = HubSessionFactory.Converter;
         var request = new ProcedureCallRequestMessage(7u, 42, new byte[] { 1, 2, 3 });
         var writer = new System.Buffers.ArrayBufferWriter<byte>();
         converter.Serialize(request, writer);
 
         byte[] corrupt = writer.WrittenSpan.ToArray();
-        // 헤더 상위 니블 = 플래그(NonId 0x01 단독 — 독립/그룹 루트/그룹 요소 어느 것도 아님), 하위 니블 = 카테고리 유지.
+        // Header high nibble = flags (NonId 0x01 alone — neither standalone, group root, nor group element); low nibble = category, kept.
         corrupt[0] = (byte)((corrupt[0] & 0x0F) | (0x01 << 4));
 
         Assert.Throws<System.IO.InvalidDataException>(() => converter.Deserialize(corrupt));

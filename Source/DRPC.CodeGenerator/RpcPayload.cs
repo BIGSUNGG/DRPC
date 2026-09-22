@@ -5,14 +5,15 @@ using DRPC.CodeGenerator.Reference;
 namespace DRPC.CodeGenerator;
 
 /// <summary>
-/// RPC 페이로드(매개변수·반환 값) 바이트 인코딩을 코드로 풀어낸다.
+/// Unrolls RPC payload (parameter/return value) byte encoding into code.
 ///
-/// 방식: 선언 순서대로 하나의 버퍼에 이어 붙인다(flat concatenation).
-/// 프리미티브·문자열·enum·nullable·byte[]·배열/List 는 이 클래스가 직접 쓰고,
-/// MessageProtocol 메시지 타입은 MessageProtocol 런타임에 위임한다(중첩 직렬화 재구현 금지).
+/// Approach: flat concatenation — everything is appended to a single buffer in declaration
+/// order. Primitives, strings, enums, nullables, byte[], and arrays/Lists are written directly
+/// by this class; MessageProtocol message types are delegated to the MessageProtocol runtime
+/// (never re-implement nested serialization).
 ///
-/// 내보내는 코드의 지역 변수는 필드 인덱스를 depth 로 받아 채번한다 — 같은 스코프에서 형제
-/// 컨테이너가 변수 이름으로 충돌하지 않는다.
+/// Locals in the emitted code are numbered by field depth, so sibling containers in the same
+/// scope never collide on variable names.
 /// </summary>
 internal static class RpcPayload
 {
@@ -27,10 +28,11 @@ internal static class RpcPayload
             SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers
             | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
-    /// <summary>쓰기/읽기가 가능한 타입인지 검증한다. 거짓이면 <paramref name="reason"/> 에 타입 표시를 담는다.</summary>
+    /// <summary>Whether the type can be written/read as payload. On false, <paramref name="reason"/> carries the type display.</summary>
     public static bool IsSupported(ITypeSymbol type, AttributeReferences references, out string reason)
         => IsSupported(type, references, allowVoid: false, out reason);
 
+    /// <summary>Whether the type can be written/read as payload, optionally allowing void.</summary>
     public static bool IsSupported(ITypeSymbol type, AttributeReferences references, bool allowVoid, out string reason)
     {
         reason = string.Empty;
@@ -91,7 +93,7 @@ internal static class RpcPayload
         return false;
     }
 
-    /// <summary>버퍼(<c>__buf</c>)에 <paramref name="valueExpression"/>을 쓴다.</summary>
+    /// <summary>Writes <paramref name="valueExpression"/> into the buffer (<c>__buf</c>).</summary>
     public static void EmitWrite(StringBuilder sb, string indent, ITypeSymbol type, string valueExpression,
         AttributeReferences references, int depth)
     {
@@ -156,7 +158,7 @@ internal static class RpcPayload
         throw new System.NotSupportedException($"EmitWrite: unsupported type {type.ToDisplayString()}");
     }
 
-    /// <summary>리더(<c>__rd</c>)에서 <paramref name="target"/> 에 값을 채운다.</summary>
+    /// <summary>Reads a value from the reader (<c>__rd</c>) into <paramref name="target"/>.</summary>
     public static void EmitRead(StringBuilder sb, string indent, ITypeSymbol type, string target, bool declare,
         AttributeReferences references, int depth)
     {
@@ -238,8 +240,9 @@ internal static class RpcPayload
     }
 
     /// <summary>
-    /// 메시지 값 기록. NonId 는 타입 고정 직렬화(생성된 정적 메서드)를 쓰고,
-    /// ID 헤더를 가진 메시지(Standalone/Group/Generic)는 object dispatch 를 써서 그룹 다형성을 지킨다.
+    /// Writes a message value. NonId uses type-fixed serialization (the generated static
+    /// methods); messages with an ID header (Standalone/Group/Generic) use object dispatch to
+    /// preserve group polymorphism.
     /// </summary>
     static string MessageWriteCall(AttributeReferences references, ITypeSymbol type)
         => references.MessageStyleOf(type) == MessageStyle.HasId
@@ -264,7 +267,7 @@ internal static class RpcPayload
         sb.AppendLine($"{indent}}}");
     }
 
-    /// <summary>enum 이면 기반 정수 타입, 아니면 null. (Roslyn 은 EnumUnderlyingType 을 INamedTypeSymbol 에만 노출)</summary>
+    /// <summary>The underlying integer type for enums, otherwise null. (Roslyn exposes EnumUnderlyingType only on INamedTypeSymbol.)</summary>
     static ITypeSymbol? underlyingType(ITypeSymbol type)
         => type is INamedTypeSymbol { TypeKind: TypeKind.Enum } named ? named.EnumUnderlyingType : null;
 

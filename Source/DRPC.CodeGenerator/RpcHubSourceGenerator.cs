@@ -7,10 +7,21 @@ using DRPC.CodeGenerator.Reference;
 namespace DRPC.CodeGenerator;
 
 /// <summary>
-/// 허브 클래스 하나를 검사하고 생성 소스 문자열을 만든다. 진단은 <see cref="System.Action{Diagnostic}"/> 로 보고한다.
+/// Inspects a hub class and produces the generated source string. Diagnostics are reported via
+/// <see cref="System.Action{Diagnostic}"/>.
 /// </summary>
 internal static class RpcHubSourceGenerator
 {
+    /// <summary>
+    /// Generates the partial hub source for <paramref name="hubSymbol"/>. Returns null when a
+    /// structural blocking diagnostic (non-partial hub, invalid hub base) was reported; on
+    /// declaration-validation failure, returns a minimal skeleton so user partials keep their
+    /// definitions.
+    /// </summary>
+    /// <param name="hubSymbol">The hub class marked with [RpcHub].</param>
+    /// <param name="references">Cached references to DRPC attribute symbols.</param>
+    /// <param name="report">Receives diagnostics.</param>
+    /// <param name="fallbackLocation">Location used when a symbol has no source location.</param>
     public static string? Generate(INamedTypeSymbol hubSymbol, AttributeReferences references,
         System.Action<Diagnostic> report, Location fallbackLocation)
     {
@@ -50,8 +61,9 @@ internal static class RpcHubSourceGenerator
         if (!Validate(model.ServerDeclarations, references, report, fallbackLocation) ||
             !Validate(model.ClientDeclarations, references, report, fallbackLocation))
         {
-            // 검증 실패 시에도 사용자 partial 구현이 고아가 되지 않게 정의 선언만 배출한다(CS0759 벽 방지).
-            // 빌드 실패 자체는 이미 보고된 진단이 담당한다.
+            // On validation failure, still emit definition declarations so the user's partial
+            // implementations are not left orphaned (prevents a wall of CS0759 follow-up errors).
+            // The build failure itself is covered by the already-reported diagnostic.
             return Emitter.RpcHubEmitter.EmitSkeleton(model);
         }
 
@@ -67,7 +79,8 @@ internal static class RpcHubSourceGenerator
         foreach (MethodMetadata method in declarations.Methods)
         {
             IMethodSymbol symbol = method.Symbol;
-            // 메타데이터(다른 어셈블리)에서 온 선언은 위치가 없다 — 허브 클래스 위치로 잡아 클릭 가능하게 한다.
+            // Declarations from metadata (another assembly) have no source location —
+            // anchor them to the hub class location so the diagnostic stays clickable.
             Location location = symbol.Locations.FirstOrDefault(static l => l.IsInSource) ?? fallbackLocation;
 
             if (!methodIds.Add(method.MethodId))
@@ -90,7 +103,8 @@ internal static class RpcHubSourceGenerator
                 return false;
             }
 
-            // 호출별 타임아웃 검증: -1(상속) 아니면 양수여야 한다. 0/-N 은 조용한 무시 대신 컴파일 거부.
+            // Per-call timeout validation: must be -1 (inherit) or positive. 0/-N is rejected
+            // at compile time instead of being silently ignored.
             if (method.TimeoutMs != -1 && method.TimeoutMs <= 0)
             {
                 report(Diagnostic.Create(DiagnosticDescriptors.InvalidTimeoutMs, location, symbol.Name,
@@ -135,9 +149,11 @@ internal static class RpcHubSourceGenerator
                 return false;
             }
 
-            // 타입 검증: 소스에 선언된 메서드는 선언부 프로바이더가 같은 컴파일레이션에서 이미 진단한다(중복 보고 방지).
-            // 메타데이터로 들어온 선언만 허브 쪽 안전망이 직접 진단한다. 어느 쪽이든 검사 자체는
-            // 항상 돌아야 한다 — 통과시키면 이미터가 지원 밖 타입에서 쓰러진다(CS8785).
+            // Type validation: methods declared in source are already diagnosed by the
+            // declarations provider within the same compilation (avoids duplicate reporting).
+            // Only declarations arriving via metadata are diagnosed directly by this hub-side
+            // safety net. Either way the check itself must always run — letting unsupported
+            // types through crashes the emitter (CS8785).
             bool declaredInSource = symbol.Locations.Any(static l => l.IsInSource);
             if (!CheckPayloadTypes(method, references, declaredInSource ? NoReport : report, location))
             {
@@ -148,11 +164,11 @@ internal static class RpcHubSourceGenerator
         return true;
     }
 
-    /// <summary>진단 없이 검증 결과만 보는 보고 싱크(중복 보고 방지용).</summary>
+    /// <summary>A report sink that discards diagnostics (used to observe validation results without duplicate reporting).</summary>
     static readonly System.Action<Diagnostic> NoReport = static _ => { };
 
-    /// <summary>[RemoteProcedure] 메서드의 매개변수·반환 타입이 페이로드로 직렬화 가능한지 검증(DRPCGEN003).
-    /// 선언부 프로바이더(허브 없이)와 허브 쪽 안전망이 공유한다. 제네릭은 닫힌 구성별로 검사한다.</summary>
+    /// <summary>Validates that [RemoteProcedure] parameter and return types are serializable as payloads (DRPCGEN003).
+    /// Shared by the declarations-only provider and the hub-side safety net. Generics are checked per closed instantiation.</summary>
     internal static bool CheckPayloadTypes(MethodMetadata method, AttributeReferences references,
         System.Action<Diagnostic> report, Location location)
     {
@@ -187,7 +203,7 @@ internal static class RpcHubSourceGenerator
         return true;
     }
 
-    /// <summary>DRPCGEN003 의 "Reason" 자리 문구.</summary>
+    /// <summary>The "Reason" phrase slot of DRPCGEN003.</summary>
     static string UnsupportedReason(ITypeSymbol type)
         => IsTask(type)
             ? "declare the contract with a plain return type (Task<int> -> int); the generated stub is already async"
@@ -203,8 +219,9 @@ internal static class RpcHubSourceGenerator
         => type != null && type.AllInterfaces.Any(i => i.ToDisplayString() == interfaceMetadataName);
 
     /// <summary>
-    /// 베이스 체인에서 허브 베이스를 찾는다. 클라이언트 측 <c>ClientHub&lt;&gt;</c>(DRPC.Client.Network) 는
-    /// client endpoint, 서버 측 <c>ServerHub&lt;&gt;</c>(DRPC.Server.Network) 는 server endpoint(ADR-0001).
+    /// Finds the hub base along the base-type chain. Client-side <c>ClientHub&lt;&gt;</c>
+    /// (DRPC.Client.Network) is a client endpoint; server-side <c>ServerHub&lt;&gt;</c>
+    /// (DRPC.Server.Network) is a server endpoint (ADR-0001).
     /// </summary>
     internal static bool TryResolveHub(INamedTypeSymbol hubSymbol, out INamedTypeSymbol? hubBase, out NetworkKind networkKind,
         out bool invalidBase)
@@ -241,7 +258,8 @@ internal static class RpcHubSourceGenerator
 
             if (ns == "DRPC.Shared.Network" && name == "HubBase")
             {
-                // 허브이긴 한데 클라이언트/서버 중 어느 측인지 선언되지 않음 → 생성 불가 사유를 알려준다.
+                // It is a hub, but neither the client nor server side is declared →
+                // report why generation is impossible.
                 hubBase = null;
                 invalidBase = true;
                 return false;

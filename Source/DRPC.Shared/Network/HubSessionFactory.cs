@@ -9,38 +9,45 @@ using MessageProtocol.Serialize;
 namespace DRPC.Shared.Network;
 
 /// <summary>
-/// 허브·세션 조립 보일러플레이트를 모은 팩토리. 생성된 코드는 이 헬퍼만 호출한다.
+/// Factory that gathers the hub/session assembly boilerplate. Generated code calls only these helpers.
 /// </summary>
 public static class HubSessionFactory
 {
-    /// <summary>MessageProtocol 기반 메시지 변환기(단일 인스턴스).</summary>
+    /// <summary>MessageProtocol-based message converter (single instance).</summary>
     public static IMessageConverter Converter { get; } = new MessageProtocolConverter();
 
     /// <summary>
-    /// RUDP 채널 위에 RPC 세션을 만든다. 세션은 채널을 소유하므로 Dispose 시 채널까지 정리된다.
+    /// Creates an RPC session over an RUDP channel. The session owns the channel, so disposing the
+    /// session also disposes the channel.
     /// </summary>
     public static ISession CreateRudpSession(IMessageChannel channel, IHubBase hub)
         => CreateRudpSession(channel, hub, null);
 
     /// <summary>
-    /// 큐·디스패치 옵션 지정 버전 — 앱이 <see cref="Communication.Shared.Messages.MessageQueueOptions"/> 로
-    /// <c>FrameTimeout</c>(슬로로리스 방어, 기본 30초 — 첫 바이트 도착 후 프레임 완성 마감),
-    /// <c>MaxFrameLength</c>(기본 4MB) 등 세션 수준 정책을 통합 관리한다(형제 제안 P3).
-    /// 커스텀 옵션 사용 시 커스텀 허브 팩토리(<c>channel => new GameHub(h => HubSessionFactory.CreateRudpSession(channel, h, opts))</c>)로 조합한다.
+    /// Queue/dispatch options variant — the app manages session-level policies in one place via
+    /// <see cref="Communication.Shared.Messages.MessageQueueOptions"/>: <c>FrameTimeout</c>
+    /// (slowloris defense, default 30s — deadline to complete a frame after its first byte arrives),
+    /// <c>MaxFrameLength</c> (default 4MB), etc. (sibling proposal P3).
+    /// To use custom options, compose them through a custom hub factory
+    /// (<c>channel => new GameHub(h => HubSessionFactory.CreateRudpSession(channel, h, opts))</c>).
     /// </summary>
     public static ISession CreateRudpSession(IMessageChannel channel, IHubBase hub,
         Communication.Shared.Messages.MessageQueueOptions? queueOptions)
         => new RudpSession(channel, Converter, session => new DRPCMessageHandler(session, hub), queueOptions);
 
     /// <summary>
-    /// 접속 옵션. <paramref name="connectionKey"/> 가 null/빈 문자열이면 전송 스택 기본 키를 쓴다.
-    /// <paramref name="connectTimeoutMs"/> 가 양수면 침묵 호스트(블랙홀) 연결 실패를 그 시간 이내로 확정한다
-    /// (Communication 2.0.1 <c>RudpTransportOptions.ConnectTimeout</c>). 0이면(기본) 전송 스택 기본값을 유지하고 음수는 거부한다.
-    /// <paramref name="maxConnections"/> 가 양수면 동시 수락 연결 수 상한으로 걸고(상한 도달 시 접속 요청은 즉시 거부·수락 계속,
-    /// Communication 2.0.1 <c>RudpTransportOptions.MaxConnections</c> — 서버 쪽에서만 의미), 0이면(기본) 무제한이다. 음수는 거부한다.
-    /// <paramref name="tls"/> 를 설정하면 연결 확립 후 DTLS 1.2 핸드셰이크를 완료한 뒤에만 채널을 전달한다
-    /// (Communication 2.5.0 <c>RudpTransportOptions.Tls</c> — 서버: <c>ServerCertificate</c>, 클라: <c>TargetHost</c>/<c>RemoteCertificateValidation</c> 필수).
-    /// null이면(기본) 평문이다.
+    /// Connection options. When <paramref name="connectionKey"/> is null/empty, the transport stack's
+    /// default key is used.
+    /// A positive <paramref name="connectTimeoutMs"/> bounds silent-host (blackhole) connection failures
+    /// to that duration (Communication 2.0.1 <c>RudpTransportOptions.ConnectTimeout</c>); 0 (default) keeps
+    /// the transport stack default, negative values are rejected.
+    /// A positive <paramref name="maxConnections"/> caps concurrently accepted connections (at the cap,
+    /// new connection attempts are rejected immediately while accepts continue;
+    /// Communication 2.0.1 <c>RudpTransportOptions.MaxConnections</c> — server side only);
+    /// 0 (default) means unlimited, negative values are rejected.
+    /// When <paramref name="tls"/> is set, the channel is delivered only after a DTLS 1.2 handshake
+    /// completes (Communication 2.5.0 <c>RudpTransportOptions.Tls</c> — server: <c>ServerCertificate</c>,
+    /// client: <c>TargetHost</c>/<c>RemoteCertificateValidation</c> required). null (default) means plaintext.
     /// </summary>
     public static RudpTransportOptions CreateTransportOptions(
         string? connectionKey,
@@ -96,7 +103,7 @@ public static class HubSessionFactory
             try
             {
                 MessageSerializer.SerializeToWriter(message, ref buffer);
-                // 핫패스 — 중간 배열(ToArray) 없이 WrittenSpan 을 단일 복사한다(IBufferWriter.Write 확장).
+                // Hot path — single copy of WrittenSpan with no intermediate array (IBufferWriter.Write extension).
                 writer.Write(buffer.WrittenSpan);
             }
             finally

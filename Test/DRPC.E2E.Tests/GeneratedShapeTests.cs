@@ -5,9 +5,9 @@ using Xunit;
 namespace DRPC.E2E.Tests;
 
 /// <summary>
-/// 생성 산출물의 **형태**를 실제 어셈블리 리플렉션으로 검증한다.
-/// (MSBuild 의 EmitCompilerGeneratedFiles 로 파일을 뽑아 grep 하는 방식은
-///  참조 프로젝트까지 프로퍼티가 전파되어 MessageProtocol 생성이 중복되는 함정이 있다 — 여기가 더 강하다.)
+/// Verifies the **shape** of the generated output via real-assembly reflection.
+/// (Emitting generated files through MSBuild's EmitCompilerGeneratedFiles and grepping them has a pitfall:
+///  the property propagates to referenced projects and duplicates MessageProtocol generation — this approach is stronger.)
 /// </summary>
 public class GeneratedShapeTests
 {
@@ -27,7 +27,7 @@ public class GeneratedShapeTests
 
             foreach (Type hub in Hubs)
             {
-                // sync 스텁(계약과 같은 이름)은 존재하면 안 된다 — Async 전용 결정(ADR-0002)의 회귀 방지.
+                // A sync stub (named like the contract) must not exist — guards the async-only decision (ADR-0002) against regressions.
                 Assert.Null(hub.GetTypeInfo().GetDeclaredMethod(contract.Name));
             }
         }
@@ -46,8 +46,8 @@ public class GeneratedShapeTests
     [Fact]
     public void Connection_factories_are_generated_with_connectionkey_overloads()
     {
-        // 생성 멤버라 nameof 로 참조하지 않는다 — 생성이 깨지면 테스트 하나가 실패해야지
-        // 테스트 어셈블리 전체가 컴파일되지 않는 것은 진단에 불리하다.
+        // Generated members are not referenced via nameof — if generation breaks, exactly one test should fail;
+        // the whole test assembly failing to compile would be worse for diagnostics.
         MethodInfo? connect = typeof(E2EClientHub).GetMethod(
             "ConnectAsync",
             new[] { typeof(string), typeof(int), typeof(string), typeof(CancellationToken) });
@@ -66,8 +66,8 @@ public class GeneratedShapeTests
     [Fact]
     public void Incoming_contract_methods_get_implementation_hooks_on_the_owning_side()
     {
-        // 서버 계약은 서버 허브가, 클라이언트 계약은 클라이언트 허브가 구현 후킹을 받는다.
-        // (컴파일 후 partial 정의/구현은 하나의 메서드로 합쳐지므로 이름 존재 여부로 본다.)
+        // The server contract gets implementation hooks on the server hub, the client contract on the client hub.
+        // (After compilation, partial definitions/implementations merge into one method, so existence is checked by name.)
         Assert.True(HasDeclared(typeof(E2EServerHub), "Add_Implementation"));
         Assert.True(HasDeclared(typeof(E2EServerHub), "PlaceOrder_Implementation"));
         Assert.True(HasDeclared(typeof(E2EClientHub), "ClientValue_Implementation"));
@@ -80,7 +80,7 @@ public class GeneratedShapeTests
     [Fact]
     public void Contract_markers_are_respected_by_the_generator()
     {
-        // 마커 인터페이스를 상속한 계약만 허브 형식 인자로 허용된다(생성기 DRPCGEN002 의 근거).
+        // Only contracts inheriting the marker interfaces are accepted as hub type arguments (the basis for generator DRPCGEN002).
         Assert.True(typeof(IServerProcedureDeclarations).IsAssignableFrom(typeof(IServerProcedures)));
         Assert.True(typeof(IClientProcedureDeclarations).IsAssignableFrom(typeof(IClientProcedures)));
         Assert.False(typeof(IServerProcedureDeclarations).IsAssignableFrom(typeof(IClientProcedures)));

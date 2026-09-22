@@ -7,7 +7,7 @@ using Xunit;
 namespace DRPC.Shared.Tests;
 
 /// <summary>
-/// HubBase 단위 테스트: CallId·타임아웃·동시성·오류 경로·전송 방식 배선. 네트워크 없이 FakeSession 으로 본다.
+/// HubBase unit tests: CallId, timeouts, concurrency, error paths, and delivery-mode wiring. Observed via FakeSession with no network.
 /// </summary>
 public class HubBaseTests
 {
@@ -63,7 +63,7 @@ public class HubBaseTests
     [Fact]
     public async Task RequestRPC_PerCallTimeout_MessageReportsPerCallBudget()
     {
-        // 진단 정확성 — 호출별 예산(50ms)으로 만료됐는데 허브 기본(30s)을 보고하면 운영자가 잘못된 노브를 의심한다.
+        // Diagnostic accuracy — if the call expired on its per-call budget (50ms) but the message reported the hub default (30s), operators would suspect the wrong knob.
         var session = new FakeSession();
         using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromSeconds(30) };
 
@@ -77,22 +77,23 @@ public class HubBaseTests
     [Fact]
     public async Task TimeoutTimer_ParksWhenPendingTableIsEmpty()
     {
-        // 유휴 주차 — 대기표가 비면 1Hz 타이머를 반납하고, 다음 시간 제한 호출 시 재생성된다(피어 수만큼 틱이 쌓이는 서버 유휴 비용 절감).
+        // Idle parking — when the pending table empties, the 1Hz timer is returned and re-created on the next timed call
+        // (avoids idle-server cost that grows with the number of peers).
         var session = new FakeSession();
         using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromMilliseconds(50) };
 
         var timerField = typeof(HubBase).GetField("_timeoutTimer",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
 
-        // 호출 시작과 동시에 타이머가 보호 중이다(EnsureTimeoutTimer 는 송신 await 전 동기 실행).
+        // The timer is protecting the call from the moment it starts (EnsureTimeoutTimer runs synchronously before the send await).
         Task<byte[]> pending = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
         Assert.NotNull(timerField.GetValue(hub));
         await Assert.ThrowsAsync<TimeoutException>(() => pending);
 
-        // 만료를 처리한 같은 틱이 스캔을 마치면 주차한다 — 수면 대신 폴링으로 기다린다(빠르고 플레이크 창이 좁다).
+        // The tick that handled the expiry parks the timer after finishing its scan — we wait by polling instead of sleeping (faster, narrower flake window).
         await WaitUntilAsync(() => timerField.GetValue(hub) is null);
 
-        // 재생성 — 다음 시간 제한 호출은 즉시 새 타이머의 보호를 받는다(만료 틱이 다시 같은 틱에 주차하므로 시작 직후에만 관측).
+        // Re-creation — the next timed call is protected by a fresh timer immediately (the expiry tick parks again on the same tick, so only the start is observable).
         Task<byte[]> second = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
         Assert.NotNull(timerField.GetValue(hub));
         await Assert.ThrowsAsync<TimeoutException>(() => second);
@@ -101,28 +102,28 @@ public class HubBaseTests
     [Fact]
     public async Task TimeoutTimer_ParksWhenOnlyInfiniteBudgetCallsRemain()
     {
-        // 무제한 예산(롱폴) 호출만 남은 피어도 주차한다 — deadline 0 은 스캔 대상이 아니어서 틱이 일만 한다.
-        // 수정 전(대기표 비었을 때만 주차)에는 무제한 호출이 하나라도 남으면 1Hz 틱이 허브 수명 내내 유지됐다.
+        // Peers with only unlimited-budget (long-poll) calls left also park — deadline 0 is not scanned, so the tick would do nothing.
+        // Before the fix (park only when the table was empty), a single unlimited call kept the 1Hz tick alive for the hub's whole lifetime.
         var session = new FakeSession();
         using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromMilliseconds(50) };
 
         var timerField = typeof(HubBase).GetField("_timeoutTimer",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
 
-        Task<byte[]> timed = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered); // 타이머 보호 시작
+        Task<byte[]> timed = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered); // timer starts protecting
         Task<byte[]> infinite = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered, Timeout.InfiniteTimeSpan);
-        await Assert.ThrowsAsync<TimeoutException>(() => timed); // 시간 제한 대기 소멸 — 무제한만 남는다
+        await Assert.ThrowsAsync<TimeoutException>(() => timed); // the timed wait dies — only the unlimited call remains
 
-        await WaitUntilAsync(() => timerField.GetValue(hub) is null); // 주차 — 수정 전엔 테이블이 비지 않아 영구 틱
+        await WaitUntilAsync(() => timerField.GetValue(hub) is null); // parks — before the fix the table never emptied, keeping the tick forever
 
-        hub.OnReceiveRPCResponseMessage(new ProcedureCallResponseMessage(2u, Payload)); // 무제한 호출은 응답 수용
+        hub.OnReceiveRPCResponseMessage(new ProcedureCallResponseMessage(2u, Payload)); // the unlimited call accepts its response
         Assert.Equal(Payload, await infinite);
     }
 
     [Fact]
     public void IsDisconnected_LatchesAfterDisconnectNotification()
     {
-        // 구독 이전에 끊긴 허브는 Disconnected 이벤트를 받을 수 없다 — 리스너 회수용 관측 신호가 필요하다(RpcHost 즉시 회수).
+        // A hub disconnected before subscription can never raise the Disconnected event — an observation signal is needed for listener reclaim (RpcHost immediate reclaim).
         var session = new FakeSession();
         using var hub = new TestHub(session);
 
@@ -134,7 +135,7 @@ public class HubBaseTests
     [Fact]
     public async Task Dispose_WhileRequestInFlight_DoesNotLeakUnobservedException()
     {
-        // 서버 중지 정상 경로 — 처리 중 요청이 있어도 Dispose(세마포 해지)는 미관측 예외를 남기지 않아야 한다.
+        // Normal server-stop path — even with a request in flight, Dispose (semaphore release) must not leave an unobserved exception.
         var session = new FakeSession();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -146,13 +147,13 @@ public class HubBaseTests
             return Payload;
         });
 
-        // 테스트 이중(TestHub)으로 디스패치 태스크를 관측한다 — 방화벽이 없으면(수정 전) 해지 경쟁의 ObjectDisposedException 이 여기로 샌다.
+        // The test double (TestHub) observes the dispatch task — without the firewall (pre-fix), the ObjectDisposedException from the release race would surface here.
         Task processing = hub.DispatchForTest(new ProcedureCallRequestMessage(1u, 1, Payload));
         await started.Task;
-        hub.Dispose(); // 슬롯 점유 중 게이트 해지 — finally 의 Release 가 예외를 낼 수 있는 순간
+        hub.Dispose(); // releasing the gate while a slot is held — the exact moment finally's Release can throw
         release.TrySetResult();
 
-        await processing; // 방화벽이 정상 종료 경쟁을 흡수 — 디스패치 태스크는 무결하게 완료되어야 한다
+        await processing; // the firewall absorbs the normal-shutdown race — the dispatch task must complete intact
     }
 
     [Fact]
@@ -167,7 +168,7 @@ public class HubBaseTests
     [Fact]
     public async Task RequestRPC_PerCallTimeout_OverridesHubDefault()
     {
-        // 허브 기본 30초라도 호출별 50ms 예산이면 TimeoutException — 전역 상한을 희생하지 않고 이 호출만 빨리 끊는다.
+        // Even with the hub default at 30s, a 50ms per-call budget throws TimeoutException — cuts this call short without sacrificing the global cap.
         var session = new FakeSession();
         using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromSeconds(30) };
 
@@ -178,7 +179,7 @@ public class HubBaseTests
     [Fact]
     public async Task RequestRPC_PerCallInfinite_OverridesFiniteHubDefault()
     {
-        // 반대 방향: 허브 기본 50ms(≈1초 스캔 틱에 만료)라도 이 호출이 무제한을 고르면 대기 유지 — 뒤늦은 응답 수용.
+        // The other direction: even with the hub default at 50ms (≈1s scan tick), choosing unlimited for this call keeps the wait alive — a late response is accepted.
         var session = new FakeSession();
         using var hub = new TestHub(session) { RpcTimeout = TimeSpan.FromMilliseconds(50) };
 
@@ -229,7 +230,7 @@ public class HubBaseTests
 
         Task<byte[]> pending = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
 
-        // 대기표 없는 CallId 의 지연·중복 응답은 다른 호출을 잘못된 값으로 완료시키면 안 된다.
+        // Late or duplicate responses for a CallId with no pending entry must not complete other calls with wrong values.
         hub.OnReceiveRPCResponseMessage(new ProcedureCallResponseMessage(999u, new byte[] { 7 }));
         hub.OnReceiveRPCErrorMessage(new ProcedureCallErrorMessage(999u, RpcErrorCode.Unhandled, "late"));
         Assert.False(pending.IsCompleted);
@@ -306,7 +307,7 @@ public class HubBaseTests
             return Task.FromResult(Payload);
         });
 
-        // one-way 신호는 CallId 0 (수신 측 등록표 아님)
+        // One-way signals use CallId 0 (not in the receiver's pending table)
         hub.OnReceiveRPCRequestMessage(new ProcedureCallRequestMessage(0u, 3, Payload));
 
         await called.Task;
@@ -342,7 +343,7 @@ public class HubBaseTests
         hub.OnReceiveRPCRequestMessage(new ProcedureCallRequestMessage(1u, 1, Payload));
         await started.Task;
 
-        // 상한 초과 요청은 처리를 기다리지 않고 Overloaded 를 받는다.
+        // An over-limit request receives Overloaded without waiting for processing.
         hub.OnReceiveRPCRequestMessage(new ProcedureCallRequestMessage(2u, 1, Payload));
         await WaitUntilAsync(() => session.Sent.OfType<ProcedureCallErrorMessage>().Any());
 
@@ -369,11 +370,11 @@ public class HubBaseTests
         Task<byte[]> first = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
         Task<byte[]> second = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
 
-        // 상한 도달 시 새 호출은 대기하지 않고 즉시 실패한다(fail-fast).
+        // Once the limit is reached, a new call fails immediately instead of queueing (fail-fast).
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered));
 
-        // 슬롯이 해제되면(응답 도착) 재시도할 수 있다.
+        // Once a slot frees up (a response arrives), a retry is accepted.
         hub.OnReceiveRPCResponseMessage(new ProcedureCallResponseMessage(1u, Payload));
         Assert.Equal(Payload, await first);
 
@@ -391,7 +392,7 @@ public class HubBaseTests
         var session = new FakeSession();
         using var hub = new TestHub(session);
 
-        // 기본값(0=무제한)은 대기 테이블 크기와 무관하게 호출을 수용한다.
+        // The default (0 = unlimited) accepts calls regardless of the wait-table size.
         Task<byte[]>[] calls = Enumerable.Range(0, 8)
             .Select(_ => hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered))
             .ToArray();
@@ -415,13 +416,13 @@ public class HubBaseTests
         Communication.Shared.Connection.DisconnectReason? observedInHandler = null;
         hub.Disconnected += () => observedInHandler = hub.LastDisconnectReason;
 
-        Assert.Null(hub.LastDisconnectReason); // 끊김 전에는 null
+        Assert.Null(hub.LastDisconnectReason); // null before disconnection
 
-        // 수신 경로(DRPCMessageHandler)가 세션 이벤트에서 호출하는 통지 — 사유를 남기고 이벤트를 숭긴다.
+        // The receive path (DRPCMessageHandler) invokes this from the session event — it records the reason and then raises the event.
         hub.NotifyDisconnected(new InvalidOperationException("flow"),
             Communication.Shared.Connection.DisconnectReason.FlowControl);
 
-        // Disconnected 핸들러 안에서 끊김 사유를 읽을 수 있다(형제 제안 P4 — FlowControl 백프레셔 식별).
+        // The disconnect reason is readable inside the Disconnected handler (sibling proposal P4 — identifies FlowControl backpressure).
         Assert.Equal(Communication.Shared.Connection.DisconnectReason.FlowControl, observedInHandler);
         Assert.Equal(Communication.Shared.Connection.DisconnectReason.FlowControl, hub.LastDisconnectReason);
     }
@@ -438,7 +439,7 @@ public class HubBaseTests
 
         ProcedureCallErrorMessage error = Assert.Single(session.Sent.OfType<ProcedureCallErrorMessage>());
         Assert.Equal(RpcErrorCode.Unhandled, error.ErrorCode);
-        Assert.Contains("boom-42", error.Message); // 기본 동작 — 상세 전송(개발 편의)
+        Assert.Contains("boom-42", error.Message); // default behavior — details are sent (developer convenience)
     }
 
     [Fact]
@@ -453,7 +454,7 @@ public class HubBaseTests
 
         ProcedureCallErrorMessage error = Assert.Single(session.Sent.OfType<ProcedureCallErrorMessage>());
         Assert.Equal(RpcErrorCode.Unhandled, error.ErrorCode);
-        Assert.DoesNotContain("boom-42", error.Message); // 내부 상세는 원격으로 새지 않는다
+        Assert.DoesNotContain("boom-42", error.Message); // internal details must not leak to the remote side
         Assert.NotEmpty(error.Message);
     }
 
@@ -492,7 +493,7 @@ public class HubBaseTests
         ProcedureCallErrorMessage error = Assert.Single(session.Sent.OfType<ProcedureCallErrorMessage>());
         Assert.Equal(1u, error.CallId);
         Assert.Equal(RpcErrorCode.PermissionDenied, error.ErrorCode);
-        Assert.False(invoked); // 거부된 호출은 구현을 실행하지 않는다
+        Assert.False(invoked); // a denied call never executes the implementation
     }
 
     [Fact]
@@ -554,10 +555,10 @@ public class HubBaseTests
         cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
 
-        // 취소된 CallId 로 뒤늦은 응답이 도착해도 아무 완료를 만들지 않는다.
+        // A late response for a canceled CallId must not complete anything.
         hub.OnReceiveRPCResponseMessage(new ProcedureCallResponseMessage(1u, Payload));
 
-        // 슬롯 반납 확인 — 상한 1에서도 새 호출이 수용된다.
+        // Slot release check — a new call is accepted even with the limit of 1.
         Task<byte[]> next = hub.RequestRPC(1, Payload, RpcDeliveryMode.ReliableOrdered);
         hub.OnReceiveRPCResponseMessage(new ProcedureCallResponseMessage(2u, Payload));
         Assert.Equal(Payload, await next);
@@ -609,7 +610,7 @@ public class HubBaseTests
         await WaitUntilAsync(() => session.Sent.Count > 0);
         Assert.IsType<ProcedureCallResponseMessage>(session.Sent[0]);
 
-        // 미등록 타입은 무시만 한다(수신 경로를 죽이지 않는다).
+        // Unregistered types are only ignored (they must not kill the receive path).
         handler.HandleMessage("not an rpc message");
         Assert.Single(session.Sent);
         GC.KeepAlive(handler);
@@ -618,7 +619,7 @@ public class HubBaseTests
     [Fact]
     public void RpcDeliveryMap_CoversEveryMode()
     {
-        // DRPC 계약 열거형과 RUDP 열거형의 대응이 끊기면 이 테스트가 잡는다.
+        // This test catches any drift between the DRPC contract enum and the RUDP enum.
         Assert.Equal(RudpDeliveryMethod.ReliableOrdered, RpcDeliveryMode.ReliableOrdered.ToSendOptions().DeliveryMethod);
         Assert.Equal(RudpDeliveryMethod.ReliableUnordered, RpcDeliveryMode.ReliableUnordered.ToSendOptions().DeliveryMethod);
         Assert.Equal(RudpDeliveryMethod.Sequenced, RpcDeliveryMode.Sequenced.ToSendOptions().DeliveryMethod);
@@ -642,6 +643,6 @@ public class HubBaseTests
             await Task.Delay(10);
         }
 
-        throw new TimeoutException("조건이 예상 시간 내에 충족되지 않았습니다.");
+        throw new TimeoutException("The condition was not met within the expected time.");
     }
 }

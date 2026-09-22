@@ -7,72 +7,72 @@ using MessageProtocol;
 namespace DRPC.E2E.Tests;
 
 /// <summary>
-/// RUDP 루프백 E2E 용 계약. 서버 계약(클라→서버)과 클라이언트 계약(서버→클라)을 한 파일에 둔다.
+/// Contracts for the RUDP loopback E2E tests. Server contracts (client→server) and client contracts (server→client) live in one file.
 /// </summary>
 public interface IServerProcedures : IServerProcedureDeclarations
 {
-    /// <summary>전송 방식 미지정 = 기본 ReliableOrdered.</summary>
+    /// <summary>Omitted delivery mode = default ReliableOrdered.</summary>
     [RemoteProcedure(methodId: 0)]
     int Add(int value1, int value2);
 
-    /// <summary>Sequenced 오버라이드(상태 갱신성 호출).</summary>
+    /// <summary>Sequenced override (state-update style calls).</summary>
     [RemoteProcedure(RpcDeliveryMode.Sequenced, 1)]
     string Echo(string text);
 
-    /// <summary>Unreliable 오버라이드.</summary>
+    /// <summary>Unreliable override.</summary>
     [RemoteProcedure(RpcDeliveryMode.Unreliable, 2)]
     void Ping(int seq);
 
-    /// <summary>OneWay: 응답 없이 전달만.</summary>
+    /// <summary>OneWay: delivered only, no response.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableUnordered, 3, OneWay = true)]
     void Note(string text);
 
-    /// <summary>메시지 타입(NonId) 매개변수·반환 + 중첩 컬렉션·decimal.</summary>
+    /// <summary>Message-typed (NonId) parameter and return, plus nested collections and decimal.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 4)]
     OrderSummary PlaceOrder(Order order);
 
-    /// <summary>구현이 예외를 던지면 Unhandled 오류로 온다.</summary>
+    /// <summary>When the implementation throws, the caller receives an Unhandled fault.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 5)]
     int AlwaysFails();
 
-    /// <summary>응답이 늦어 호출 측 타임아웃을 유발한다.</summary>
+    /// <summary>Responds late enough to trigger the caller-side timeout.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 6)]
     int Slow(int delayMs);
 
-    /// <summary>호출별 타임아웃(TimeoutMs=400): 허브 기본(30초)과 무관하게 이 호출만 빠르게 만료한다.</summary>
+    /// <summary>Per-call timeout (TimeoutMs=400): expires quickly for this call only, regardless of the hub default (30s).</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 11, TimeoutMs = 400)]
     int SlowWithPerCallTimeout(int delayMs);
 
-    /// <summary>제네릭 ①: 반환 전용 제네릭. 허용 T = int/string(메시지 타입 반환은 ③④ 가 담당).</summary>
+    /// <summary>Generic ①: return-only generic. Allowed T = int/string (message-typed returns are covered by ③④).</summary>
     [RemoteProcedure(methodId: 7)]
     [GenericProcedure(typeof(int), typeof(string))]
     T GetDefault<T>();
 
-    /// <summary>제네릭 ②: 매개변수 제네릭(호출 측 타입 추론). T = int/string.</summary>
+    /// <summary>Generic ②: parameter generic (caller-side type inference). T = int/string.</summary>
     [RemoteProcedure(methodId: 8)]
     [GenericProcedure(typeof(int), typeof(string))]
     string Describe<T>(T value);
 
-    /// <summary>제네릭 ③: 복합 다중 슬롯(반환 T1 + 매개변수 T2, T3, 데카르트 곱).</summary>
+    /// <summary>Generic ③: multiple slots combined (return T1 + parameters T2, T3; Cartesian product).</summary>
     [RemoteProcedure(methodId: 9)]
     [GenericProcedure(0, typeof(int), typeof(string))]
     [GenericProcedure(1, typeof(float), typeof(double))]
     [GenericProcedure(2, typeof(Order), typeof(ChatLine))]
     T1 Blend<T1, T2, T3>(T2 left, T3 right);
 
-    /// <summary>제네릭 ④: [GenericMessage] 파라미터. T 허용 집합은 Package 구성 선언에서 상속(메시지 타입만 가능 — T 멤버는 런타임 메시지 디스패치로 직렬화된다).</summary>
+    /// <summary>Generic ④: [GenericMessage] parameter. T's allowed set is inherited from the Package configuration declarations (message types only — T members are serialized via runtime message dispatch).</summary>
     [RemoteProcedure(methodId: 10)]
     void Deliver<T>(Package<T> box);
 
-    /// <summary>Validation=true: _Validate true 면 구현이 호출된다.</summary>
+    /// <summary>Validation=true: when _Validate returns true, the implementation is invoked.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 12, Validation = true)]
     int GuardedAdd(int value1, int value2);
 
-    /// <summary>Validation=true: _Validate false 면 구현 미호출 + ValidationFailed(7) 오류 응답.</summary>
+    /// <summary>Validation=true: when _Validate returns false, the implementation is skipped and a ValidationFailed(7) fault is returned.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 13, Validation = true)]
     int GuardedReject(int value);
 
-    /// <summary>제네릭 Validation: T 가 int 일 때만 통과, 그 외는 ValidationFailed.</summary>
+    /// <summary>Generic validation: passes only when T is int; anything else yields ValidationFailed.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 14, Validation = true)]
     [GenericProcedure(typeof(int), typeof(string))]
     T GuardedDefault<T>();
@@ -80,11 +80,11 @@ public interface IServerProcedures : IServerProcedureDeclarations
 
 public interface IClientProcedures : IClientProcedureDeclarations
 {
-    /// <summary>서버가 클라이언트로 역호출한다(양방향 RPC).</summary>
+    /// <summary>The server calls back into the client (bidirectional RPC).</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableOrdered, 0)]
     int ClientValue();
 
-    /// <summary>그룹 다형성: 실제 파생 타입이 보존된다.</summary>
+    /// <summary>Group polymorphism: the actual derived type is preserved.</summary>
     [RemoteProcedure(RpcDeliveryMode.ReliableUnordered, 1, OneWay = true)]
     void ReceiveLine(ChatLine line);
 }
@@ -115,8 +115,8 @@ public partial class ShoutChatLine : ChatLine
 {
 }
 
-/// <summary>제네릭 ④용 [GenericMessage]. 구성(ClassId)마다 와이어 (MessageId, ClassId) 로 식별된다.
-/// T 는 ID 헤더 메시지(Standalone/Group)여야 한다 — NonId 는 제네릭 구성 등록이 막힌다.</summary>
+/// <summary>[GenericMessage] for generic ④. Each configuration (ClassId) is identified on the wire by (MessageId, ClassId).
+/// T must be an ID-headered message (Standalone/Group) — NonId blocks generic configuration registration.</summary>
 [Message(MessageKind.Standalone, 50)]
 [GenericMessage(typeof(Package<ChatLine>), ClassId = 1)]
 [GenericMessage(typeof(Package<Receipt>), ClassId = 2)]
@@ -132,7 +132,7 @@ public partial class Receipt
 }
 
 /// <summary>
-/// 서버 측 허브. Incoming = 서버 계약(자기가 구현), Outgoing = 클라이언트 계약(상대를 호출).
+/// Server-side hub. Incoming = server contract (implemented here), Outgoing = client contract (calls the peer).
 /// </summary>
 public partial class E2EServerHub : ServerHub<IServerProcedures, IClientProcedures>
 {
@@ -196,7 +196,7 @@ public partial class E2EServerHub : ServerHub<IServerProcedures, IClientProcedur
 
     private partial Task<bool> GuardedReject_Validate(int value) => Task.FromResult(false);
 
-    // _Validate 가 항상 false 라 이 구현은 호출되면 안 된다 — 만약 호출되면 ValidationFailed 대신 Unhandled(1) 로 드러난다.
+    // _Validate always returns false, so this implementation must never be invoked — if it ever runs, it surfaces as Unhandled(1) instead of ValidationFailed.
     private partial Task<int> GuardedReject_Implementation(int value) => throw new InvalidOperationException("GuardedReject_Implementation must not run");
 
     private partial Task<bool> GuardedDefault_Validate<T>() => Task.FromResult(typeof(T) == typeof(int));
@@ -205,8 +205,8 @@ public partial class E2EServerHub : ServerHub<IServerProcedures, IClientProcedur
 }
 
 /// <summary>
-/// 클라이언트 측 허브. Outgoing = 서버 계약, Incoming = 클라이언트 계약.
-/// 서버가 역호출하는 메서드만 여기서 구현한다.
+/// Client-side hub. Outgoing = server contract, Incoming = client contract.
+/// Only the methods the server calls back are implemented here.
 /// </summary>
 public partial class E2EClientHub : ClientHub<IServerProcedures, IClientProcedures>
 {
